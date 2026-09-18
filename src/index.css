@@ -58,14 +58,15 @@
 }
 
 html {
-  min-width: 320px;
+  width: 100%;
   background: var(--color-canvas);
 }
 
 body {
+  width: 100%;
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 button,
@@ -88,11 +89,14 @@ select:focus-visible {
 }
 
 #root {
+  min-width: 0;
   min-height: 100vh;
 }
 
 .app-shell {
+  width: 100%;
   min-height: 100vh;
+  overflow-x: clip;
   background-color: var(--color-canvas);
   background-image: radial-gradient(rgba(18, 33, 59, 0.1) 0.65px, transparent 0.65px);
   background-size: 24px 24px;
@@ -213,6 +217,7 @@ select:focus-visible {
 }
 
 .app-main {
+  min-width: 0;
   min-height: 100vh;
   margin-left: var(--sidebar-width);
 }
@@ -222,6 +227,7 @@ select:focus-visible {
   top: 0;
   z-index: 20;
   display: flex;
+  min-width: 0;
   height: var(--topbar-height);
   align-items: center;
   justify-content: space-between;
@@ -230,6 +236,13 @@ select:focus-visible {
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid var(--color-border);
   backdrop-filter: blur(10px);
+}
+
+.topbar__left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
 }
 
 .topbar__identity {
@@ -257,6 +270,7 @@ select:focus-visible {
 
 .topbar__workspace {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: var(--space-2);
   min-height: 30px;
@@ -2326,7 +2340,7 @@ select:focus-visible {
 
 @media (max-width: 900px) {
   .sidebar {
-    width: min(var(--sidebar-width), calc(100vw - 52px));
+    width: min(var(--sidebar-width), calc(100dvw - 52px));
     box-shadow: var(--shadow-md);
     transform: translateX(-102%);
     transition: transform 220ms ease;
@@ -2362,13 +2376,6 @@ select:focus-visible {
     padding: 0 var(--space-6);
   }
 
-  .topbar__left {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 14px;
-  }
-
   .button.topbar__menu {
     display: inline-flex;
     flex: 0 0 42px;
@@ -2395,6 +2402,10 @@ select:focus-visible {
   }
 
   .system-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-form__content--upi {
     grid-template-columns: 1fr;
   }
 }
@@ -2520,7 +2531,12 @@ select:focus-visible {
     --topbar-height: 68px;
   }
 
+  .app-shell {
+    background-size: 20px 20px;
+  }
+
   .topbar {
+    gap: var(--space-3);
     padding: 0 var(--space-4);
   }
 
@@ -2534,7 +2550,8 @@ select:focus-visible {
   }
 
   .page {
-    padding: var(--space-8) 18px var(--space-10);
+    width: 100%;
+    padding: var(--space-6) var(--space-4) var(--space-10);
   }
 
   .page__header {
@@ -2546,23 +2563,23 @@ select:focus-visible {
   }
 
   .page--admission {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .page--payment {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .page--students {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .page--payments {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .payments-page-header {
@@ -2732,6 +2749,8 @@ select:focus-visible {
 
   .receipt-preview__header {
     align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-4);
     padding: var(--space-5);
   }
 
@@ -2750,8 +2769,12 @@ select:focus-visible {
   }
 
   .receipt-preview__brand address {
-    max-width: 230px;
+    max-width: none;
     font-size: 9px;
+  }
+
+  .receipt-preview__status {
+    justify-items: start;
   }
 
   .receipt-preview__title {
@@ -2866,7 +2889,13 @@ select:focus-visible {
   }
 
   .modal__footer {
+    align-items: stretch;
+    flex-direction: column;
     padding: var(--space-4) var(--space-5);
+  }
+
+  .modal__footer .button {
+    width: 100%;
   }
 }
 
@@ -3113,8 +3142,8 @@ select:focus-visible {
 
 @media (max-width: 600px) {
   .page--course-codes {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .course-codes-page-header {
@@ -3136,9 +3165,9 @@ select:focus-visible {
   }
 
   .course-code-success {
-    right: 18px;
-    bottom: 18px;
-    left: 18px;
+    right: var(--space-4);
+    bottom: var(--space-4);
+    left: var(--space-4);
     text-align: center;
   }
 }
@@ -3468,8 +3497,8 @@ select:focus-visible {
 
 @media (max-width: 600px) {
   .page--dashboard {
-    padding-right: 18px;
-    padding-left: 18px;
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
   }
 
   .dashboard-summary {
@@ -3508,6 +3537,65 @@ select:focus-visible {
 
   .dashboard-official-links article {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    width: min(286px, calc(100dvw - 32px));
+  }
+
+  .topbar__title {
+    max-width: calc(100dvw - 96px);
+  }
+
+  .page__title {
+    font-size: 25px;
+  }
+
+  .card--padded,
+  .admission-section__header,
+  .admission-section__fields,
+  .payment-form__fields,
+  .receipt-history,
+  .course-code-tools {
+    padding: var(--space-3);
+  }
+
+  .system-fields,
+  .modal__header,
+  .modal__body {
+    padding: var(--space-4);
+  }
+
+  .system-fields__grid,
+  .payment-totals,
+  .receipt-preview__amounts,
+  .receipt-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-totals > div,
+  .receipt-preview__amounts > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .payment-totals > div:last-child,
+  .receipt-preview__amounts > div:last-child {
+    border-bottom: 0;
+  }
+
+  .receipt-preview__header,
+  .receipt-preview__details {
+    padding-right: var(--space-4);
+    padding-left: var(--space-4);
+  }
+
+  .receipt-preview__amounts,
+  .receipt-preview__footer-details {
+    margin-right: var(--space-4);
+    margin-left: var(--space-4);
   }
 }
 
