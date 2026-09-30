@@ -7,7 +7,7 @@ import {
   ClipboardPlus,
   ExternalLink,
   IndianRupee,
-  ReceiptText,
+  UserRoundCheck,
   UsersRound,
   WalletCards,
 } from 'lucide-react'
@@ -110,10 +110,10 @@ export function DashboardOverview() {
   return (
     <>
       <section className="dashboard-summary" aria-label="Dashboard summary">
-        <OverviewCard icon={<UsersRound size={19} />} label="Total Students" value={String(data.totalStudents)} />
         <OverviewCard icon={<IndianRupee size={19} />} label="Total Collected" value={formatReceiptCurrency(data.totalCollected)} />
         <OverviewCard icon={<WalletCards size={19} />} label="Outstanding Fees" value={formatReceiptCurrency(data.outstandingFees)} attention />
         <OverviewCard icon={<CalendarDays size={19} />} label="Today's Collection" value={formatReceiptCurrency(data.todaysCollection)} />
+        <OverviewCard icon={<UsersRound size={19} />} label="Total Students" value={String(data.totalStudents)} />
       </section>
 
       <DashboardSection title="LSA Quick Links">
@@ -153,7 +153,7 @@ export function DashboardOverview() {
         </DashboardSection>
         <DashboardSection title="Recent Payments" action={<Button variant="secondary" onClick={() => navigate('/payment-history')}>View All Payments<ArrowRight aria-hidden="true" size={14} /></Button>}>
           {data.recentPayments.length ? (
-            <Table className="dashboard-table dashboard-payments-table"><thead><tr><th>Receipt ID</th><th>Student Name</th><th>Course</th><th>Current Payment</th><th>Payment Date</th><th>Payment Mode</th></tr></thead><tbody>{data.recentPayments.map((payment) => <tr key={payment.receiptId}><td><strong>{payment.receiptId}</strong></td><td>{payment.studentName}</td><td>{payment.course}</td><td>{formatReceiptCurrency(payment.amountPaid)}</td><td>{formatReceiptDate(payment.paymentDate)}</td><td>{payment.paymentMode}</td></tr>)}</tbody></Table>
+            <Table className="dashboard-table dashboard-payments-table"><thead><tr><th>Receipt ID</th><th>Student Name</th><th>Course</th><th>Current Payment</th><th>Payment Date</th></tr></thead><tbody>{data.recentPayments.map((payment) => <tr key={payment.receiptId}><td><strong>{payment.receiptId}</strong></td><td>{payment.studentName}</td><td>{payment.course}</td><td>{formatReceiptCurrency(payment.amountPaid)}</td><td>{formatReceiptDate(payment.paymentDate)}</td></tr>)}</tbody></Table>
           ) : <EmptyState title="No payments yet" description="Recent fee payments will appear here." action={<Button onClick={() => navigate('/fee-receipt')}>New Payment</Button>} />}
         </DashboardSection>
       </section>
@@ -162,10 +162,9 @@ export function DashboardOverview() {
         <DashboardSection title="Payment Modes"><BarList items={data.paymentModes} /></DashboardSection>
         <DashboardSection title="Quick Actions">
           <div className="dashboard-actions">
+            <Button onClick={() => navigate('/walk-ins')}><UserRoundCheck aria-hidden="true" size={16} />Add Walk-in</Button>
             <Button onClick={() => navigate('/new-admission')}><ClipboardPlus aria-hidden="true" size={16} />New Admission</Button>
             <Button variant="secondary" onClick={() => navigate('/fee-receipt')}><Banknote aria-hidden="true" size={16} />New Payment</Button>
-            <Button variant="secondary" onClick={() => navigate('/students')}><UsersRound aria-hidden="true" size={16} />Students</Button>
-            <Button variant="secondary" onClick={() => navigate('/payment-history')}><ReceiptText aria-hidden="true" size={16} />Payments</Button>
           </div>
         </DashboardSection>
       </section>

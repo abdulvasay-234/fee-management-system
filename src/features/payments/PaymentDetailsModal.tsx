@@ -1,4 +1,4 @@
-import { Banknote, FileText, UserRound, X } from 'lucide-react'
+import { Banknote, UserRound, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button } from '../../components/ui'
 import type { Student } from '../students/studentTypes'
@@ -13,7 +13,6 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
 interface PaymentDetailsModalProps {
   onClose: () => void
   onMakePayment: (student: Student) => void
-  onViewReceipt: (payment: PaymentRecord, student: Student) => void
   onViewStudent: (student: Student) => void
   payment: PaymentRecord
   student: Student
@@ -41,7 +40,6 @@ function DetailSection({
 export function PaymentDetailsModal({
   onClose,
   onMakePayment,
-  onViewReceipt,
   onViewStudent,
   payment,
   student,
@@ -115,7 +113,6 @@ export function PaymentDetailsModal({
         </div>
         <footer className="payment-detail-modal__footer">
           <Button variant="secondary" onClick={() => onViewStudent(student)}><UserRound aria-hidden="true" size={15} />View Student</Button>
-          <Button variant="secondary" onClick={() => onViewReceipt(payment, student)}><FileText aria-hidden="true" size={15} />View Receipt</Button>
           <Button onClick={() => onMakePayment(student)}><Banknote aria-hidden="true" size={15} />Make Another Payment</Button>
         </footer>
       </section>

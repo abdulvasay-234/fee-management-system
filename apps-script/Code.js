@@ -30,6 +30,18 @@ const CONFIG = {
   PAYMENTS_INDEX_SHEET_ID:
     "1GnYoyluxLMU5ESCIB_qYdp69Tp4rAdt_-ZsAMvbYaYw",
 
+  VISITORS_SOURCE_SHEET_ID:
+    "1uwYU2X0k9v24bT0C0adQGrdg3yIuUNJ4YVL5gAA4Om8",
+
+  VISITORS_INDEX_SHEET_ID:
+    "1k9k3vEu93qDLnXuh7NKYA1QLBtsWay-p8Shg88cZri4",
+
+  FOLLOW_UPS_SOURCE_SHEET_ID:
+    "1eatei4b5DmyHHTJLBetpBustlDGPAz_o28aNvkL0XSY",
+
+  FOLLOW_UPS_INDEX_SHEET_ID:
+    "1CVULH9rG73dvbAl4EQ89jNG-KaWkZ0e57sNdd4NXA5I",
+
   ADMISSION_SHEET_IDS: {
     "python programming": "1rTp-0i6I-_K0QzLLwoZnOgsQ6qiBkeL9OKcO2EYin8U",
     "data science": "1JL202KADTPv5iGkYeiazeKtWDk_0hxlOiIuJgjBSuA0",
@@ -54,7 +66,8 @@ const CONFIG = {
     "City", "State", "Pincode", "Course", "Batch", "Start Time",
     "End Time", "Enrollment Month", "Enrollment Year", "Admission Date",
     "Course Duration", "Total Course Fee", "Discount", "Final Fee",
-    "Remarks", "Created At"
+    "Remarks", "Created At", "Year of Passing", "College Name",
+    "Degree / Course"
   ],
 
   PAYMENT_HEADERS: [
@@ -68,8 +81,25 @@ const CONFIG = {
     "Student ID", "Full Name", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Mobile Number", "Email", "Address", "City", "State", "Pincode", "Course", "Batch", "Start Time", "End Time", "Enrollment Month", "Enrollment Year", "Admission Date", "Course Duration", "Total Course Fee", "Discount", "Final Fee", "Total Paid", "Balance", "Latest Payment Date", "Latest Receipt ID", "Payment Count", "Remarks", "Created At"
   ],
 
+  VISITOR_HEADERS: [
+    "Visitor ID", "Full Name", "Mobile Number", "Email", "College",
+    "Degree / Course", "Year of Graduation", "Course Interested In",
+    "Other Course", "Referral", "Other Referral", "Notes / Remarks",
+    "Consulted With", "Visit Date", "Entry Time", "Exit Time",
+    "Visit Status", "Follow-up Required", "Conversion Status",
+    "Admission ID", "Created At", "Updated At"
+  ],
+
+  FOLLOW_UP_HEADERS: [
+    "Follow-up ID", "Visitor ID", "Full Name", "Mobile Number",
+    "Course Interested In", "Follow-up Number", "Scheduled Date",
+    "Completed Date", "Follow-up Status", "Contact Method", "Notes",
+    "Created By", "Created At", "Updated At"
+  ],
+
   PAYMENT_MODES: ["Cash", "UPI", "Bank Transfer", "Card", "Other"],
   FEE_TYPES: ["Admission Fee", "Installment", "Full Payment", "Other"],
+  FOLLOW_UP_STATUSES: ["Pending", "Completed", "Not Required"],
   OTHER_PROGRAM_TYPES: [
     "Workshop", "Bootcamp", "Masterclass", "Seminar", "Event",
     "Certification", "Other"
@@ -88,138 +118,17 @@ const CONFIG = {
   ]
 };
 
+let CURRENT_GATEWAY_IDENTITY_ = null;
+
 
 // ============================================================
 // GET REQUEST
 // ============================================================
 
 function doGet(e) {
-  try {
-
-    const action =
-      e && e.parameter
-        ? e.parameter.action
-        : "";
-
-    // --------------------------------------------------------
-    // COURSE CODES
-    // --------------------------------------------------------
-
-    if (action === "course-codes") {
-
-      return jsonResponse_({
-        success: true,
-        data: getCourseCodes_()
-      });
-
-    }
-
-    if (action === "students") {
-
-      return jsonResponse_({
-        success: true,
-        data: getStudents_(e.parameter)
-      });
-
-    }
-
-    if (action === "student") {
-
-      return jsonResponse_({
-        success: true,
-        data: getStudentDetails_(e.parameter)
-      });
-
-    }
-
-    if (action === "payments") {
-
-      return jsonResponse_({
-        success: true,
-        data: getPayments_(e.parameter)
-      });
-
-    }
-
-    if (action === "dashboard") {
-
-      return jsonResponse_({
-        success: true,
-        data: getDashboardData_()
-      });
-
-    }
-
-    if (action === "rebuild-indexes") {
-
-      if (e.parameter.confirm !== "REBUILD_INDEXES") {
-        throw new Error("Index rebuild requires explicit confirmation.");
-      }
-
-      return jsonResponse_({
-        success: true,
-        data: rebuildIndexes_()
-      });
-
-    }
-
-
-    // --------------------------------------------------------
-    // HEALTH
-    // --------------------------------------------------------
-
-    if (action === "health") {
-
-      return jsonResponse_({
-        success: true,
-        message: "LSA Admin API is running",
-        timestamp: new Date().toISOString()
-      });
-
-    }
-
-
-    // --------------------------------------------------------
-    // TEST DRIVE
-    // --------------------------------------------------------
-
-    if (action === "test-drive") {
-
-      return jsonResponse_(
-        testDriveConnection_()
-      );
-
-    }
-
-
-    // --------------------------------------------------------
-    // DEFAULT
-    // --------------------------------------------------------
-
-    return jsonResponse_({
-      success: true,
-      message: "LSA Admin API is running",
-
-      availableActions: [
-        "health",
-        "test-drive",
-        "course-codes",
-        "students",
-        "student",
-        "payments",
-        "dashboard"
-      ]
-    });
-
-
-  } catch (error) {
-
-    return jsonResponse_({
-      success: false,
-      error: error.message
-    });
-
-  }
+  const action = e && e.parameter ? String(e.parameter.action || "").trim() : "";
+  if (action === "health") return jsonResponse_({ success: true, status: "ok" });
+  return jsonResponse_({ success: false, error: "Unauthorized" });
 }
 
 
@@ -228,109 +137,93 @@ function doGet(e) {
 // ============================================================
 
 function doPost(e) {
-
+  CURRENT_GATEWAY_IDENTITY_ = null;
   try {
-
-    if (
-      !e ||
-      !e.postData ||
-      !e.postData.contents
-    ) {
-
-      return jsonResponse_({
-        success: false,
-        error: "Empty POST request body"
-      });
-
-    }
-
-
-    const body =
-      JSON.parse(
-        e.postData.contents || "{}"
-      );
-
-
-    const action =
-      String(body.action || "").trim();
-
-
-    // --------------------------------------------------------
-    // ADD COURSE
-    // --------------------------------------------------------
-
-    if (action === "add-course") {
-
-      return jsonResponse_(
-        addCourseCode_(body)
-      );
-
-    }
-
-
-    // --------------------------------------------------------
-    // UPDATE COURSE
-    // --------------------------------------------------------
-
-    if (action === "update-course") {
-
-      return jsonResponse_(
-        updateCourseCode_(body)
-      );
-
-    }
-
-
-    // --------------------------------------------------------
-    // DELETE COURSE
-    // --------------------------------------------------------
-
-    if (action === "delete-course") {
-
-      return jsonResponse_(
-        deleteCourseCode_(body)
-      );
-
-    }
-// --------------------------------------------------------
-// ADD STUDENT / NEW ADMISSION
-// --------------------------------------------------------
-
-if (action === "add-student") {
-
-  return jsonResponse_(
-    addStudent_(body)
-  );
-
+    if (!e || !e.postData || !e.postData.contents) throw new Error("Unauthorized");
+    let body;
+    try { body = JSON.parse(e.postData.contents); } catch { throw new Error("Unauthorized"); }
+    const identity = requireGatewayRequest_(body);
+    CURRENT_GATEWAY_IDENTITY_ = identity;
+    const action = String(body.action || "").trim();
+    const parameters = getGatewayParameters_(body);
+    return jsonResponse_(dispatchGatewayAction_(action, parameters, identity));
+  } catch (error) {
+    return jsonResponse_({
+      success: false,
+      error: error.message === "Unauthorized" ? "Unauthorized" : error.message
+    });
+  } finally {
+    CURRENT_GATEWAY_IDENTITY_ = null;
+  }
 }
 
-    if (action === "add-payment") {
+function getGatewaySecret_() {
+  return String(PropertiesService.getScriptProperties().getProperty("GATEWAY_SECRET") || "");
+}
 
-      return jsonResponse_(
-        addPayment_(body)
-      );
+function gatewaySecretsMatch_(supplied, expected) {
+  const left = String(supplied || "");
+  const right = String(expected || "");
+  let mismatch = left.length ^ right.length;
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index++) mismatch |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  return mismatch === 0;
+}
 
-    }
+function requireGatewayRequest_(requestData) {
+  const expectedSecret = getGatewaySecret_();
+  if (!expectedSecret || !gatewaySecretsMatch_(requestData && requestData.gatewaySecret, expectedSecret)) throw new Error("Unauthorized");
+  const gatewayIdentity = requestData && requestData.gatewayIdentity;
+  const googleSub = gatewayIdentity ? String(gatewayIdentity.googleSub || "").trim() : "";
+  const email = gatewayIdentity ? String(gatewayIdentity.email || "").trim().toLowerCase() : "";
+  if (!googleSub || !email) throw new Error("Unauthorized");
+  return { googleSub: googleSub, email: email, name: String(gatewayIdentity.name || "").trim() };
+}
 
-    // --------------------------------------------------------
-    // UNKNOWN ACTION
-    // --------------------------------------------------------
-
-    return jsonResponse_({
-      success: false,
-      error: "Unknown POST action",
-      action: action
-    });
-
-
-  } catch (error) {
-
-    return jsonResponse_({
-      success: false,
-      error: error.message
-    });
-
+function getGatewayParameters_(body) {
+  let source;
+  if (Object.prototype.hasOwnProperty.call(body, "parameters")) {
+    if (!body.parameters || typeof body.parameters !== "object" || Array.isArray(body.parameters)) throw new Error("Invalid request parameters.");
+    source = body.parameters;
+  } else {
+    source = body;
   }
+  const parameters = Object.create(null);
+  const reserved = { action: true, parameters: true, gatewaySecret: true, gatewayIdentity: true };
+  const prohibited = { __proto__: true, constructor: true, prototype: true };
+  Object.keys(source).forEach(function(key) {
+    if (prohibited[key]) throw new Error("Invalid request parameters.");
+    if (!reserved[key]) parameters[key] = source[key];
+  });
+  return parameters;
+}
+
+function dispatchGatewayAction_(action, parameters, identity) {
+  if (action === "course-codes") return { success: true, data: getCourseCodes_() };
+  if (action === "students") return { success: true, data: getStudents_(parameters) };
+  if (action === "student") return { success: true, data: getStudentDetails_(parameters) };
+  if (action === "payments") return { success: true, data: getPayments_(parameters) };
+  if (action === "dashboard") return { success: true, data: getDashboardData_() };
+  if (action === "walkins") return { success: true, data: getWalkIns_(parameters) };
+  if (action === "followups") return { success: true, data: getFollowUps_(parameters) };
+  if (action === "rebuild-indexes") {
+    if (!Object.prototype.hasOwnProperty.call(parameters, "confirm") || parameters.confirm !== "REBUILD_INDEXES") throw new Error("Index rebuild requires explicit confirmation.");
+    return { success: true, data: rebuildIndexes_() };
+  }
+  if (action === "add-course") return addCourseCode_(parameters);
+  if (action === "update-course") return updateCourseCode_(parameters);
+  if (action === "delete-course") return deleteCourseCode_(parameters);
+  if (action === "add-student") return addStudent_(parameters);
+  if (action === "add-payment") return addPayment_(parameters);
+  if (action === "add-walkin") return addWalkIn_(parameters);
+  if (action === "update-walkin") return updateWalkIn_(parameters);
+  if (action === "mark-walkin-exit") return markWalkInExit_(parameters);
+  if (action === "add-followup") {
+    parameters.createdBy = identity.email;
+    return addFollowUp_(parameters);
+  }
+  if (action === "update-followup") return updateFollowUp_(parameters);
+  throw new Error("Unknown API action.");
 }
 
 
@@ -1986,6 +1879,21 @@ function addStudent_(payload) {
         payload.remarks || ""
       ).trim();
 
+    const yearOfPassing =
+      String(
+        payload.yearOfPassing || ""
+      ).trim();
+
+    const collegeName =
+      String(
+        payload.collegeName || ""
+      ).trim();
+
+    const degreeCourse =
+      String(
+        payload.degreeCourse || ""
+      ).trim();
+
 
     // ========================================================
     // REQUIRED FIELD VALIDATION
@@ -2400,7 +2308,16 @@ function addStudent_(payload) {
             remarks,
 
           createdAt:
-            createdAt
+            createdAt,
+
+          yearOfPassing:
+            yearOfPassing,
+
+          collegeName:
+            collegeName,
+
+          degreeCourse:
+            degreeCourse
         }
       );
 
@@ -2977,6 +2894,40 @@ function getAdmissionHeaderInfo_(
         }
       );
 
+  const educationHeaderStart =
+    CONFIG.ADMISSION_HEADERS.length - 3;
+
+  if (
+    headers.length >= educationHeaderStart &&
+    headers.length < CONFIG.ADMISSION_HEADERS.length &&
+    headers.every(function(header, index) {
+      return header === CONFIG.ADMISSION_HEADERS[index];
+    })
+  ) {
+
+    const missingHeaders =
+      CONFIG.ADMISSION_HEADERS.slice(
+        headers.length
+      );
+
+    sheet
+      .getRange(
+        1,
+        headers.length + 1,
+        1,
+        missingHeaders.length
+      )
+      .setValues([
+        missingHeaders
+      ]);
+
+    Array.prototype.push.apply(
+      headers,
+      missingHeaders
+    );
+
+  }
+
 
   const columns = {};
 
@@ -3120,6 +3071,15 @@ function buildAdmissionRow_(
 
         case "Created At":
           return student.createdAt;
+
+        case "Year of Passing":
+          return student.yearOfPassing;
+
+        case "College Name":
+          return student.collegeName;
+
+        case "Degree / Course":
+          return student.degreeCourse;
 
         default:
           return "";
@@ -3406,6 +3366,286 @@ function findCourseFolder_(
 
 
 // ============================================================
+// WALK-INS & FOLLOW-UPS API
+// ============================================================
+
+function getStructuredSheetInfo_(sheet, expectedHeaders, label) {
+  const lastColumn = sheet.getLastColumn();
+  if (!lastColumn) throw new Error(label + " sheet has no headers.");
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0].map(function(header) {
+    return String(header).trim();
+  });
+  const columns = {};
+  headers.forEach(function(header, index) { if (header) columns[header] = index + 1; });
+  expectedHeaders.forEach(function(header) {
+    if (!columns[header]) throw new Error(label + ' sheet is missing required column "' + header + '".');
+  });
+  return { headers: headers, columns: columns };
+}
+
+function safeSheetValue_(value) {
+  if (typeof value === "string" && /^[=+\-@]/.test(value)) return "'" + value;
+  return value;
+}
+
+function appendStructuredRecord_(sheet, headers, rowValues, textHeaders) {
+  const info = getStructuredSheetInfo_(sheet, headers, "Source");
+  const nextRow = Math.max(sheet.getLastRow() + 1, 2);
+  sheet.getRange(nextRow, 1, 1, info.headers.length).setValues([rowValues]);
+  (textHeaders || []).forEach(function(header) {
+    sheet.getRange(nextRow, info.columns[header]).setNumberFormat("@").setValue(rowValues[info.columns[header] - 1]);
+  });
+  return nextRow;
+}
+
+function findStructuredRecord_(sheet, headers, keyHeader, keyValue, mapper) {
+  const info = getStructuredSheetInfo_(sheet, headers, "Source");
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  const values = sheet.getRange(2, 1, lastRow - 1, info.headers.length).getDisplayValues();
+  const zeroBasedColumns = {};
+  Object.keys(info.columns).forEach(function(header) { zeroBasedColumns[header] = info.columns[header] - 1; });
+  for (let index = 0; index < values.length; index++) {
+    if (String(values[index][zeroBasedColumns[keyHeader]] || "").trim() === keyValue) {
+      return { row: index + 2, record: mapper(values[index], zeroBasedColumns), info: info };
+    }
+  }
+  return null;
+}
+
+function updateStructuredRecord_(sheet, row, values) {
+  sheet.getRange(row, 1, 1, values.length).setValues([values]);
+}
+
+function getNextAnnualId_(sheet, headers, idHeader, prefix, date) {
+  const info = getStructuredSheetInfo_(sheet, headers, "Source");
+  const year = Utilities.formatDate(date, Session.getScriptTimeZone(), "yy");
+  const expectedPrefix = prefix + "-" + year + "-";
+  const lastRow = sheet.getLastRow();
+  let highest = 0;
+  if (lastRow >= 2) {
+    const values = sheet.getRange(2, info.columns[idHeader], lastRow - 1, 1).getDisplayValues();
+    values.forEach(function(row) {
+      const id = String(row[0] || "").trim();
+      if (id.indexOf(expectedPrefix) !== 0) return;
+      const sequence = Number(id.substring(expectedPrefix.length));
+      if (Number.isInteger(sequence) && sequence > highest) highest = sequence;
+    });
+  }
+  return expectedPrefix + String(highest + 1).padStart(4, "0");
+}
+
+function validateEmail_(email) {
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid Email address.");
+}
+
+function normalizeInterestedCourse_(value) {
+  const course = String(value || "").trim();
+  if (!course) throw new Error("Course Interested In is required.");
+  if (normalizeText_(course) === "other") return "Other";
+  const match = getCourseCodes_().find(function(item) {
+    return normalizeCourseName_(item.courseName) === normalizeCourseName_(course) && normalizeActive_(item.active) === "Yes";
+  });
+  if (!match) throw new Error('Course Interested In "' + course + '" is not an active course.');
+  return match.courseName;
+}
+
+function validateVisitorRecord_(visitor) {
+  if (!visitor.fullName) throw new Error("Full Name is required.");
+  if (!visitor.mobileNumber) throw new Error("Mobile Number is required.");
+  validateEmail_(visitor.email);
+  visitor.courseInterestedIn = normalizeInterestedCourse_(visitor.courseInterestedIn);
+  if (normalizeText_(visitor.courseInterestedIn) === "other" && !visitor.otherCourse) throw new Error("Other Course is required when Course Interested In is Other.");
+  if (normalizeText_(visitor.courseInterestedIn) !== "other") visitor.otherCourse = "";
+  if (!visitor.referral) throw new Error("Referral is required.");
+  if (normalizeText_(visitor.referral) === "other" && !visitor.otherReferral) throw new Error("Other Referral is required when Referral is Other.");
+  if (normalizeText_(visitor.referral) !== "other") visitor.otherReferral = "";
+  if (!visitor.consultedWith) throw new Error("Consulted With is required.");
+  visitor.followUpRequired = requireAllowedOption_(visitor.followUpRequired, ["Yes", "No"], "Follow-up Required");
+  visitor.conversionStatus = requireAllowedOption_(visitor.conversionStatus, ["Not Converted", "Converted"], "Conversion Status");
+  return visitor;
+}
+
+function visitorFromPayload_(payload, existing) {
+  const visitor = existing || {};
+  const fields = {
+    fullName: "fullName", mobileNumber: "mobileNumber", email: "email", college: "college",
+    degreeCourse: "degreeCourse", yearOfGraduation: "yearOfGraduation", courseInterestedIn: "courseInterestedIn",
+    otherCourse: "otherCourse", referral: "referral", otherReferral: "otherReferral", notes: "notes",
+    consultedWith: "consultedWith", followUpRequired: "followUpRequired", conversionStatus: "conversionStatus"
+  };
+  Object.keys(fields).forEach(function(field) {
+    if (!existing || Object.prototype.hasOwnProperty.call(payload, fields[field])) visitor[field] = String(payload[fields[field]] || "").trim();
+  });
+  if (!existing) visitor.conversionStatus = "Not Converted";
+  return validateVisitorRecord_(visitor);
+}
+
+function addWalkIn_(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let visitor;
+  let indexWarning = "";
+  try {
+    const now = new Date();
+    const sheet = getVisitorsSourceSheet_();
+    visitor = visitorFromPayload_(payload, null);
+    visitor.visitorId = getNextAnnualId_(sheet, CONFIG.VISITOR_HEADERS, "Visitor ID", "VIS", now);
+    visitor.visitDate = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    visitor.entryTime = now;
+    visitor.exitTime = "";
+    visitor.visitStatus = "Currently Inside";
+    visitor.conversionStatus = "Not Converted";
+    visitor.admissionId = "";
+    visitor.createdAt = now;
+    visitor.updatedAt = now;
+    appendStructuredRecord_(sheet, CONFIG.VISITOR_HEADERS, buildVisitorRow_(visitor), ["Visitor ID", "Mobile Number"]);
+    try { synchronizeVisitorIndex_(visitor); } catch (error) {
+      Logger.log("Visitors Index synchronization failed: " + error.message);
+      indexWarning = "Walk-in source was saved, but Visitors Index synchronization failed. Rebuild the visitor indexes.";
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  const response = { success: true, data: visitor };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+function updateWalkIn_(payload) {
+  const visitorId = String(payload.visitorId || "").trim();
+  if (!visitorId) throw new Error("Visitor ID is required.");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let visitor;
+  let indexWarning = "";
+  try {
+    const sheet = getVisitorsSourceSheet_();
+    const found = findStructuredRecord_(sheet, CONFIG.VISITOR_HEADERS, "Visitor ID", visitorId, mapVisitorRow_);
+    if (!found) throw new Error('Visitor ID "' + visitorId + '" was not found.');
+    visitor = visitorFromPayload_(payload, found.record);
+    visitor.visitorId = visitorId;
+    visitor.admissionId = found.record.admissionId;
+    visitor.createdAt = found.record.createdAt;
+    visitor.updatedAt = new Date();
+    updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor));
+    try { synchronizeVisitorIndex_(visitor); } catch (error) {
+      Logger.log("Visitors Index synchronization failed: " + error.message);
+      indexWarning = "Walk-in source was updated, but Visitors Index synchronization failed. Rebuild the visitor indexes.";
+    }
+  } finally { lock.releaseLock(); }
+  const response = { success: true, data: visitor };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+function markWalkInExit_(payload) {
+  const visitorId = String(payload.visitorId || "").trim();
+  if (!visitorId) throw new Error("Visitor ID is required.");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let visitor;
+  let alreadyCompleted = false;
+  let indexWarning = "";
+  try {
+    const sheet = getVisitorsSourceSheet_();
+    const found = findStructuredRecord_(sheet, CONFIG.VISITOR_HEADERS, "Visitor ID", visitorId, mapVisitorRow_);
+    if (!found) throw new Error('Visitor ID "' + visitorId + '" was not found.');
+    visitor = found.record;
+    alreadyCompleted = visitor.visitStatus === "Completed" && Boolean(visitor.exitTime);
+    if (!alreadyCompleted) {
+      visitor.exitTime = new Date();
+      visitor.visitStatus = "Completed";
+      visitor.updatedAt = new Date();
+      updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor));
+    }
+    try { synchronizeVisitorIndex_(visitor); } catch (error) {
+      Logger.log("Visitors Index synchronization failed: " + error.message);
+      indexWarning = "Walk-in source is safe, but Visitors Index synchronization failed. Rebuild the visitor indexes.";
+    }
+  } finally { lock.releaseLock(); }
+  const response = { success: true, data: visitor, alreadyCompleted: alreadyCompleted };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+function addFollowUp_(payload) {
+  const visitorId = String(payload.visitorId || "").trim();
+  if (!visitorId) throw new Error("Visitor ID is required.");
+  const scheduledDateText = String(payload.scheduledDate || "").trim();
+  const scheduledDate = parseDateOnly_(scheduledDateText);
+  if (!scheduledDate) throw new Error("Scheduled Date must use YYYY-MM-DD.");
+  const status = requireAllowedOption_(payload.followUpStatus || "Pending", CONFIG.FOLLOW_UP_STATUSES, "Follow-up Status");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let followUp;
+  let indexWarning = "";
+  try {
+    const now = new Date();
+    const visitorFound = findStructuredRecord_(getVisitorsSourceSheet_(), CONFIG.VISITOR_HEADERS, "Visitor ID", visitorId, mapVisitorRow_);
+    if (!visitorFound) throw new Error('Visitor ID "' + visitorId + '" was not found.');
+    const visitor = visitorFound.record;
+    const sheet = getFollowUpsSourceSheet_();
+    const existing = readFollowUpSourceRecords_().filter(function(record) { return record.visitorId === visitorId; });
+    const nextNumber = existing.reduce(function(highest, record) { return Math.max(highest, record.followUpNumber); }, 0) + 1;
+    followUp = {
+      followUpId: getNextAnnualId_(sheet, CONFIG.FOLLOW_UP_HEADERS, "Follow-up ID", "FU", now),
+      visitorId: visitorId, fullName: visitor.fullName, mobileNumber: visitor.mobileNumber,
+      courseInterestedIn: visitor.courseInterestedIn, followUpNumber: nextNumber, scheduledDate: scheduledDateText,
+      completedDate: status === "Completed" ? now : "", followUpStatus: status,
+      contactMethod: String(payload.contactMethod || "").trim(), notes: String(payload.notes || "").trim(),
+      createdBy: String(payload.createdBy || "").trim(), createdAt: now, updatedAt: now
+    };
+    appendStructuredRecord_(sheet, CONFIG.FOLLOW_UP_HEADERS, buildFollowUpRow_(followUp), ["Follow-up ID", "Visitor ID", "Mobile Number"]);
+    try { synchronizeFollowUpIndex_(followUp); } catch (error) {
+      Logger.log("Follow-ups Index synchronization failed: " + error.message);
+      indexWarning = "Follow-up source was saved, but Follow-ups Index synchronization failed. Rebuild the visitor indexes.";
+    }
+  } finally { lock.releaseLock(); }
+  const response = { success: true, data: followUp };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+function updateFollowUp_(payload) {
+  const followUpId = String(payload.followUpId || "").trim();
+  if (!followUpId) throw new Error("Follow-up ID is required.");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let followUp;
+  let indexWarning = "";
+  try {
+    const sheet = getFollowUpsSourceSheet_();
+    const found = findStructuredRecord_(sheet, CONFIG.FOLLOW_UP_HEADERS, "Follow-up ID", followUpId, mapFollowUpRow_);
+    if (!found) throw new Error('Follow-up ID "' + followUpId + '" was not found.');
+    followUp = found.record;
+    if (Object.prototype.hasOwnProperty.call(payload, "scheduledDate")) {
+      const scheduledDate = String(payload.scheduledDate || "").trim();
+      if (!parseDateOnly_(scheduledDate)) throw new Error("Scheduled Date must use YYYY-MM-DD.");
+      followUp.scheduledDate = scheduledDate;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "followUpStatus")) {
+      const previousStatus = followUp.followUpStatus;
+      followUp.followUpStatus = requireAllowedOption_(payload.followUpStatus, CONFIG.FOLLOW_UP_STATUSES, "Follow-up Status");
+      if (followUp.followUpStatus === "Completed" && previousStatus !== "Completed") followUp.completedDate = new Date();
+      if (followUp.followUpStatus !== "Completed") followUp.completedDate = "";
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "contactMethod")) followUp.contactMethod = String(payload.contactMethod || "").trim();
+    if (Object.prototype.hasOwnProperty.call(payload, "notes")) followUp.notes = String(payload.notes || "").trim();
+    followUp.updatedAt = new Date();
+    updateStructuredRecord_(sheet, found.row, buildFollowUpRow_(followUp));
+    try { synchronizeFollowUpIndex_(followUp); } catch (error) {
+      Logger.log("Follow-ups Index synchronization failed: " + error.message);
+      indexWarning = "Follow-up source was updated, but Follow-ups Index synchronization failed. Rebuild the visitor indexes.";
+    }
+  } finally { lock.releaseLock(); }
+  const response = { success: true, data: followUp };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+
+// ============================================================
 // PAYMENTS API - ADD PAYMENT
 // ============================================================
 
@@ -3430,14 +3670,14 @@ function addPayment_(payload) {
       );
 
     const feeType =
-      requireAllowedOption_(
+      optionalAllowedOption_(
         payload.feeType,
         CONFIG.FEE_TYPES,
         "Fee Type"
       );
 
     const paymentMode =
-      requireAllowedOption_(
+      optionalAllowedOption_(
         payload.paymentMode,
         CONFIG.PAYMENT_MODES,
         "Payment Mode"
@@ -4040,8 +4280,27 @@ function requireAllowedOption_(
 }
 
 
-function getCreatedBy_() {
+function optionalAllowedOption_(
+  value,
+  allowedValues,
+  label
+) {
 
+  if (!String(value || "").trim()) {
+    return "";
+  }
+
+  return requireAllowedOption_(
+    value,
+    allowedValues,
+    label
+  );
+
+}
+
+
+function getCreatedBy_() {
+  if (CURRENT_GATEWAY_IDENTITY_ && CURRENT_GATEWAY_IDENTITY_.email) return CURRENT_GATEWAY_IDENTITY_.email;
   return Session.getActiveUser().getEmail() || "Unknown";
 
 }

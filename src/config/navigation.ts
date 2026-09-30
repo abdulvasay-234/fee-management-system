@@ -1,11 +1,12 @@
 import {
+  Banknote,
   ClipboardPlus,
   BookKey,
-  FileText,
   History,
   LayoutDashboard,
   Settings,
   Users,
+  UserRoundCheck,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -17,10 +18,11 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: ClipboardPlus, label: 'New Admission', path: '/new-admission' },
-  { icon: FileText, label: 'Fee Receipt', path: '/fee-receipt' },
-  { icon: Users, label: 'Students', path: '/students' },
+  { icon: UserRoundCheck, label: 'Walk-ins', path: '/walk-ins' },
+  { icon: Users, label: 'Admissions', path: '/admissions' },
   { icon: History, label: 'Payments', path: '/payment-history' },
+  { icon: ClipboardPlus, label: 'New Admission', path: '/new-admission' },
+  { icon: Banknote, label: 'Fee Payment', path: '/fee-receipt' },
   { icon: BookKey, label: 'Course Codes', path: '/course-codes' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ]

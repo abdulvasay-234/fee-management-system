@@ -1,11 +1,10 @@
 import { ArrowRight } from 'lucide-react'
 
-type WorkflowStep = 'admission' | 'payment' | 'receipt'
+type WorkflowStep = 'admission' | 'payment'
 
 const steps: Array<{ id: WorkflowStep; label: string; number: string }> = [
   { id: 'admission', label: 'Admission', number: '01' },
   { id: 'payment', label: 'Fee Payment', number: '02' },
-  { id: 'receipt', label: 'Receipt', number: '03' },
 ]
 
 export function WorkflowProgress({ current }: { current: WorkflowStep }) {

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://accounts.google.com; frame-src https://accounts.google.com; connect-src https://lsa-api-gateway.lsa-416.workers.dev; img-src 'self' https://*.googleusercontent.com data:; style-src 'self' 'unsafe-inline' https://accounts.google.com; base-uri 'none'; form-action 'none'"
+    />
+    <title>LSA Google Authentication Smoke Test</title>
+    <style>
+      :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #12213b; background: #f6f8fb; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; }
+      main { width: min(100%, 520px); padding: 32px; background: #fff; border: 1px solid #e4e9f0; border-top: 5px solid #d92d3f; border-radius: 8px; box-shadow: 0 14px 34px rgba(8,24,47,.1); }
+      h1 { margin: 0; color: #0d2444; font-size: 28px; }
+      .eyebrow { margin: 0 0 8px; color: #b92334; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+      .intro { color: #657186; line-height: 1.6; }
+      #google-button { min-height: 44px; margin: 24px 0; }
+      dl { display: grid; gap: 12px; margin: 24px 0 0; }
+      dl div { padding: 12px; background: #f9fafc; border-left: 3px solid #f4c542; }
+      dt { color: #8b95a7; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+      dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 700; }
+      pre { max-height: 260px; margin: 8px 0 0; overflow: auto; white-space: pre-wrap; font: 12px/1.5 ui-monospace, monospace; }
+      .failed { color: #b92334; }
+      .passed { color: #0d2444; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Smoke Harness v2 - GET course-codes</p>
+      <h1>LSA Google Authentication</h1>
+      <p class="intro">Use an approved Google test account. The credential remains in this page's memory only.</p>
+      <div id="google-button"></div>
+      <dl aria-live="polite">
+        <div><dt>Smoke harness version</dt><dd>v2 - GET course-codes</dd></div>
+        <div><dt>Google authentication</dt><dd id="auth-status">Waiting for sign-in</dd></div>
+        <div><dt>Authenticated email</dt><dd id="email">—</dd></div>
+        <div><dt>API request count</dt><dd id="request-count">0</dd></div>
+        <div><dt>Request method</dt><dd id="request-method">—</dd></div>
+        <div><dt>Request URL</dt><dd id="request-url">—</dd></div>
+        <div><dt>Request body exists</dt><dd id="request-body">—</dd></div>
+        <div><dt>Worker HTTP status</dt><dd id="worker-status">—</dd></div>
+        <div><dt>Response headers</dt><dd id="response-headers">—</dd></div>
+        <div><dt>Sanitized response</dt><dd><pre id="worker-response">—</pre></dd></div>
+      </dl>
+    </main>
+    <script type="module" src="./smoke.js?v=2"></script>
+  </body>
+</html>

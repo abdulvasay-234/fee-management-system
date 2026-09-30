@@ -26,3 +26,14 @@ export const genderOptions = [
   { label: 'Other', value: 'Other' },
   { label: 'Prefer not to say', value: 'Prefer not to say' },
 ]
+
+const currentYear = new Date().getFullYear()
+
+export const yearOfPassingOptions = [
+  { label: 'Select year', value: '' },
+  { label: 'Currently Pursuing', value: 'Currently Pursuing' },
+  ...Array.from({ length: 16 }, (_, index) => {
+    const year = String(currentYear - index)
+    return { label: year, value: year }
+  }),
+]

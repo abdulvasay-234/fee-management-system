@@ -122,6 +122,30 @@ function getPayments_(filters) {
   return readIndexedPayments_(filters);
 }
 
+function getWalkIns_(filters) {
+  return readIndexedVisitors_(filters).sort(function(left, right) {
+    const dateOrder = normalizeComparableDateOnly_(right.visitDate).localeCompare(normalizeComparableDateOnly_(left.visitDate));
+    return dateOrder || String(right.visitorId).localeCompare(String(left.visitorId));
+  });
+}
+
+function getFollowUps_(filters) {
+  return readIndexedFollowUps_(filters).sort(function(left, right) {
+    if (filters.visitorId) {
+      return left.followUpNumber - right.followUpNumber || normalizeComparableDateOnly_(left.scheduledDate).localeCompare(normalizeComparableDateOnly_(right.scheduledDate));
+    }
+    return normalizeComparableDateOnly_(right.scheduledDate).localeCompare(normalizeComparableDateOnly_(left.scheduledDate)) || String(right.followUpId).localeCompare(String(left.followUpId));
+  });
+}
+
+function readVisitorSourceRecords_() {
+  return readSheetRecords_(getVisitorsSourceSheet_(), CONFIG.VISITOR_HEADERS, mapVisitorRow_);
+}
+
+function readFollowUpSourceRecords_() {
+  return readSheetRecords_(getFollowUpsSourceSheet_(), CONFIG.FOLLOW_UP_HEADERS, mapFollowUpRow_);
+}
+
 function readPaymentsForCourses_(courses, filters) {
   const payments = [];
   const seen = {};
@@ -232,8 +256,39 @@ function mapPaymentRow_(row, columns) {
   };
 }
 
+function mapVisitorRow_(row, columns) {
+  const value = function(header) { return String(row[columns[header]] || "").trim(); };
+  return {
+    visitorId: value("Visitor ID"), fullName: value("Full Name"), mobileNumber: value("Mobile Number"), email: value("Email"),
+    college: value("College"), degreeCourse: value("Degree / Course"), yearOfGraduation: value("Year of Graduation"),
+    courseInterestedIn: value("Course Interested In"), otherCourse: value("Other Course"), referral: value("Referral"),
+    otherReferral: value("Other Referral"), notes: value("Notes / Remarks"), consultedWith: value("Consulted With"),
+    visitDate: value("Visit Date"), entryTime: value("Entry Time"), exitTime: value("Exit Time"), visitStatus: value("Visit Status"),
+    followUpRequired: value("Follow-up Required"), conversionStatus: value("Conversion Status"), admissionId: value("Admission ID"),
+    createdAt: value("Created At"), updatedAt: value("Updated At")
+  };
+}
+
+function mapFollowUpRow_(row, columns) {
+  const value = function(header) { return String(row[columns[header]] || "").trim(); };
+  return {
+    followUpId: value("Follow-up ID"), visitorId: value("Visitor ID"), fullName: value("Full Name"), mobileNumber: value("Mobile Number"),
+    courseInterestedIn: value("Course Interested In"), followUpNumber: Number(value("Follow-up Number")) || 0,
+    scheduledDate: value("Scheduled Date"), completedDate: value("Completed Date"), followUpStatus: value("Follow-up Status"),
+    contactMethod: value("Contact Method"), notes: value("Notes"), createdBy: value("Created By"),
+    createdAt: value("Created At"), updatedAt: value("Updated At")
+  };
+}
+
 function matchesStudentFilters_(student, filters) {
-  return (!filters.studentId || student.studentId === String(filters.studentId).trim()) &&
+  const search = String(filters.search || "").trim();
+  const matchesSearch = !search ||
+    student.studentId.indexOf(search) !== -1 ||
+    normalizeText_(student.fullName).indexOf(normalizeText_(search)) !== -1 ||
+    student.mobileNumber.indexOf(search) !== -1;
+
+  return matchesSearch &&
+    (!filters.studentId || student.studentId === String(filters.studentId).trim()) &&
     (!filters.name || normalizeText_(student.fullName).indexOf(normalizeText_(filters.name)) !== -1) &&
     (!filters.mobile || student.mobileNumber.indexOf(String(filters.mobile).trim()) !== -1) &&
     (!filters.batch || student.batch === normalizeBatch_(filters.batch));
@@ -250,6 +305,47 @@ function matchesPaymentFilters_(payment, filters) {
     (!filters.feeType || normalizeText_(payment.feeType) === normalizeText_(filters.feeType)) &&
     (!normalizedDateFrom || normalizedDate >= normalizedDateFrom) &&
     (!normalizedDateTo || normalizedDate <= normalizedDateTo);
+}
+
+function matchesVisitorFilters_(visitor, filters) {
+  const search = normalizeText_(filters.search);
+  const visitDate = normalizeComparableDateOnly_(visitor.visitDate);
+  const dateFrom = normalizeComparableDateOnly_(filters.dateFrom);
+  const dateTo = normalizeComparableDateOnly_(filters.dateTo);
+  const month = String(filters.month || "").trim();
+  const matchesSearch = !search || [visitor.visitorId, visitor.fullName, visitor.mobileNumber].some(function(value) {
+    return normalizeText_(value).indexOf(search) !== -1;
+  });
+
+  return matchesSearch &&
+    (!filters.visitorId || visitor.visitorId === String(filters.visitorId).trim()) &&
+    (!filters.mobile || visitor.mobileNumber.indexOf(String(filters.mobile).trim()) !== -1) &&
+    (!filters.name || normalizeText_(visitor.fullName).indexOf(normalizeText_(filters.name)) !== -1) &&
+    (!filters.date || visitDate === normalizeComparableDateOnly_(filters.date)) &&
+    (!dateFrom || visitDate >= dateFrom) && (!dateTo || visitDate <= dateTo) &&
+    (!month || visitDate.substring(0, 7) === month) &&
+    (!filters.course || normalizeCourseName_(visitor.courseInterestedIn) === normalizeCourseName_(filters.course)) &&
+    (!filters.referral || normalizeText_(visitor.referral) === normalizeText_(filters.referral)) &&
+    (!filters.consultedWith || normalizeText_(visitor.consultedWith) === normalizeText_(filters.consultedWith)) &&
+    (!filters.status || normalizeText_(visitor.visitStatus) === normalizeText_(filters.status)) &&
+    (!filters.followUpRequired || normalizeText_(visitor.followUpRequired) === normalizeText_(filters.followUpRequired)) &&
+    (!filters.conversionStatus || normalizeText_(visitor.conversionStatus) === normalizeText_(filters.conversionStatus));
+}
+
+function matchesFollowUpFilters_(followUp, filters) {
+  const search = normalizeText_(filters.search);
+  const scheduledDate = normalizeComparableDateOnly_(followUp.scheduledDate);
+  const month = String(filters.month || "").trim();
+  const matchesSearch = !search || [followUp.followUpId, followUp.visitorId, followUp.fullName, followUp.mobileNumber].some(function(value) {
+    return normalizeText_(value).indexOf(search) !== -1;
+  });
+
+  return matchesSearch &&
+    (!filters.visitorId || followUp.visitorId === String(filters.visitorId).trim()) &&
+    (!filters.followUpId || followUp.followUpId === String(filters.followUpId).trim()) &&
+    (!filters.status || normalizeText_(followUp.followUpStatus) === normalizeText_(filters.status)) &&
+    (!filters.scheduledDate || scheduledDate === normalizeComparableDateOnly_(filters.scheduledDate)) &&
+    (!month || scheduledDate.substring(0, 7) === month);
 }
 
 function matchesCourseFilter_(courseName, filter) {

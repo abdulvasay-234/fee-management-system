@@ -11,14 +11,14 @@ export function StudentsPage() {
       <header className="students-page-header">
         <div>
           <span className="page__eyebrow">LSA WORKSPACE</span>
-          <h1 className="page__title">Students</h1>
+          <h1 className="page__title">Admissions</h1>
           <p className="page__description">
-            Manage registered students, course details, and fee information.
+            Manage admissions, student details, and outstanding fee balances.
           </p>
         </div>
         <Button onClick={() => navigate('/new-admission')}>
           <Plus aria-hidden="true" size={17} />
-          Add New Student
+          Add Admission
         </Button>
       </header>
       <StudentsDirectory />

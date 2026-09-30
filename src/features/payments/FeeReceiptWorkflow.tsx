@@ -1,16 +1,12 @@
 import {
   Banknote,
-  Download,
+  CheckCircle2,
   FileText,
-  Mail,
-  MessageCircle,
-  Printer,
   Search,
-  ShieldAlert,
 } from 'lucide-react'
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui'
+import { Badge, Button, Card, Input, Textarea } from '../../components/ui'
 import { formatAmountInput, parseAmount } from '../../utils/amount'
 import { createPayment, fetchStudents } from '../../services/api'
 import type { Student } from '../students/studentTypes'
@@ -18,19 +14,10 @@ import { toPaymentSnapshot } from '../students/studentWorkflow'
 import { WorkflowProgress } from '../workflow/WorkflowProgress'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
-import { FeeReceipt } from './FeeReceipt'
-import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
-import {
-  createEmailUrl,
-  createWhatsAppUrl,
-  downloadReceiptPdf,
-} from './receiptActions'
 
 interface PaymentFormData {
   amountPaid: string
-  feeType: string
   paymentDate: string
-  paymentMode: string
   remarks: string
 }
 
@@ -52,16 +39,6 @@ function getLocalDate() {
 
 function formatCurrency(value: number) {
   return currencyFormatter.format(value)
-}
-
-function openExternalLink(url: string, newTab = false) {
-  const link = document.createElement('a')
-  link.href = url
-  if (newTab) {
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-  }
-  link.click()
 }
 
 function StudentSummary({ admission }: { admission: AdmissionSnapshot }) {
@@ -101,12 +78,7 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
     setIsLoading(true)
     setError('')
     try {
-      const resultSets = await Promise.all([
-        fetchStudents({ name: query }),
-        fetchStudents({ studentId: query }),
-        fetchStudents({ mobile: query }),
-      ])
-      const records = Array.from(new Map(resultSets.flat().map((student) => [student.studentId, student])).values())
+      const records = await fetchStudents({ search: query })
       setStudents(records.map((student) => ({
         ...student,
         discountPercentage: student.totalCourseFee ? (student.discount / student.totalCourseFee) * 100 : 0,
@@ -135,15 +107,13 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
   )
 }
 
-function PaymentForm({ admission, onGenerated }: {
+function PaymentForm({ admission, onRecorded }: {
   admission: AdmissionSnapshot
-  onGenerated: (payment: PaymentRecord) => void
+  onRecorded: (payment: PaymentRecord) => void
 }) {
   const initialForm: PaymentFormData = {
     amountPaid: '',
-    feeType: '',
     paymentDate: getLocalDate(),
-    paymentMode: '',
     remarks: '',
   }
   const [formData, setFormData] = useState(initialForm)
@@ -155,8 +125,6 @@ function PaymentForm({ admission, onGenerated }: {
   const currentPayment = parseAmount(formData.amountPaid)
   const totalPaid = previousPaid + currentPayment
   const balance = Math.max(admission.finalFee - totalPaid, 0)
-  const showUpiQr = formData.paymentMode === 'UPI'
-  const hasPaymentAmount = Number.isFinite(currentPayment) && currentPayment > 0
 
   function updateField(field: keyof PaymentFormData, value: string) {
     setFormData((current) => ({ ...current, [field]: value }))
@@ -181,9 +149,7 @@ function PaymentForm({ admission, onGenerated }: {
     } else if (amount > admission.finalFee - previousPaid) {
       nextErrors.amountPaid = 'Payment cannot exceed the remaining balance.'
     }
-    if (!formData.paymentMode) nextErrors.paymentMode = 'Select a payment mode.'
     if (!formData.paymentDate) nextErrors.paymentDate = 'Select a payment date.'
-    if (!formData.feeType) nextErrors.feeType = 'Select a fee type.'
 
     return nextErrors
   }
@@ -207,13 +173,11 @@ function PaymentForm({ admission, onGenerated }: {
         studentId: admission.admissionNumber,
         course: admission.course,
         amountPaid: currentPayment,
-        paymentMode: formData.paymentMode,
         paymentDate: formData.paymentDate,
-        feeType: formData.feeType,
         remarks: formData.remarks.trim(),
       })
       const { receipt } = result
-      onGenerated({
+      onRecorded({
         paymentId: receipt.receiptId,
         receiptId: receipt.receiptId,
         studentId: receipt.studentId,
@@ -223,9 +187,9 @@ function PaymentForm({ admission, onGenerated }: {
         enrollmentMonth: admission.enrollmentMonth,
         enrollmentYear: admission.enrollmentYear,
         paymentDate: formData.paymentDate,
-        feeType: formData.feeType,
+        feeType: '',
         amountPaid: currentPayment,
-        paymentMode: formData.paymentMode,
+        paymentMode: '',
         previousPaid: receipt.previousPaid,
         totalPaid: receipt.totalPaid,
         balance: receipt.balance,
@@ -234,7 +198,7 @@ function PaymentForm({ admission, onGenerated }: {
         remarks: formData.remarks,
       })
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Unable to create the payment receipt.')
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save the payment.')
     } finally {
       setIsSubmitting(false)
     }
@@ -242,7 +206,7 @@ function PaymentForm({ admission, onGenerated }: {
 
   return (
     <form className="payment-form" noValidate onSubmit={handleSubmit}>
-      <div className={`payment-form__content${showUpiQr ? ' payment-form__content--upi' : ''}`}>
+      <div className="payment-form__content">
         <Card className="payment-card">
           <header className="payment-card__header">
             <div className="student-summary__icon" aria-hidden="true"><Banknote size={20} /></div>
@@ -250,23 +214,10 @@ function PaymentForm({ admission, onGenerated }: {
           </header>
           <div className="payment-form__fields">
             <Input id="amountPaid" name="amountPaid" label="Amount Paid" required inputMode="decimal" placeholder="0.00" value={formData.amountPaid} error={errors.amountPaid} onChange={handleAmountChange} />
-            <Select id="paymentMode" name="paymentMode" label="Payment Mode" required options={paymentModeOptions} value={formData.paymentMode} error={errors.paymentMode} onChange={handleChange} />
             <Input id="paymentDate" name="paymentDate" label="Payment Date" required type="date" value={formData.paymentDate} error={errors.paymentDate} onChange={handleChange} />
-            <Select id="feeType" name="feeType" label="Fee Type" required options={feeTypeOptions} value={formData.feeType} error={errors.feeType} onChange={handleChange} />
             <Textarea containerClassName="payment-form__full" id="paymentRemarks" name="remarks" label="Remarks" rows={3} value={formData.remarks} onChange={handleChange} />
           </div>
         </Card>
-
-        {showUpiQr && (
-          <Card className="upi-payment-card">
-            <header className="upi-payment-card__header"><span>Pay via UPI</span><h2>Scan to pay</h2></header>
-            <p className="upi-payment-card__intro">Scan the QR code below to make the payment.</p>
-            <img className="upi-payment-card__qr" src={`${import.meta.env.BASE_URL}imgs/upi-qr.jpg`} alt="LSA UPI payment QR code" />
-            <div className="upi-payment-card__amount"><span>Amount to pay</span><strong>{hasPaymentAmount ? formatCurrency(currentPayment) : 'Enter payment amount'}</strong></div>
-            <ol className="upi-payment-card__steps"><li>Open any UPI app.</li><li>Scan the QR code.</li><li>Enter and confirm the payment amount.</li><li>Complete the payment.</li><li>Verify payment before recording it.</li></ol>
-            <p className="upi-payment-card__warning"><ShieldAlert aria-hidden="true" size={16} />Verify the payment in your UPI app/bank confirmation before recording the payment.</p>
-          </Card>
-        )}
       </div>
 
       <section className="payment-totals" aria-label="Payment calculation">
@@ -277,124 +228,52 @@ function PaymentForm({ admission, onGenerated }: {
       </section>
 
       <div className="payment-form__actions">
-        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving Payment...' : 'Generate Receipt'}</Button>
-        <p>Payment totals and receipt ID are confirmed by the LSA Admin API.</p>
+        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving Payment...' : 'Save Payment'}</Button>
+        <p>Payment totals are confirmed by the LSA Admin API.</p>
       </div>
       {submitError && <p className="receipt-actions__error" role="alert">{submitError}</p>}
     </form>
   )
 }
 
-function ReceiptPreview({
+function PaymentSuccess({
   admission,
-  onSelectReceipt,
+  onDone,
   payment,
-  receipts,
 }: {
   admission: AdmissionSnapshot
-  onSelectReceipt: (payment: PaymentRecord) => void
+  onDone: () => void
   payment: PaymentRecord
-  receipts: PaymentRecord[]
 }) {
-  const receiptRef = useRef<HTMLElement>(null)
-  const [actionError, setActionError] = useState('')
-  const [isDownloading, setIsDownloading] = useState(false)
-
-  async function handleDownload() {
-    if (!receiptRef.current || isDownloading) return
-    setActionError('')
-    setIsDownloading(true)
-    try {
-      await downloadReceiptPdf(receiptRef.current, payment.receiptId)
-    } catch {
-      setActionError('Unable to generate the receipt PDF. Please try again.')
-    } finally {
-      setIsDownloading(false)
-    }
-  }
-
-  function handleEmail() {
-    const emailUrl = createEmailUrl(admission, payment)
-    if (!emailUrl) {
-      setActionError('No email address available for this student.')
-      return
-    }
-    setActionError('')
-    openExternalLink(emailUrl)
-  }
-
-  function handleWhatsApp() {
-    const whatsappUrl = createWhatsAppUrl(admission, payment)
-    if (!whatsappUrl) {
-      setActionError(
-        admission.mobileNumber.trim()
-          ? 'Unable to open WhatsApp. Please check the mobile number.'
-          : 'No mobile number available for this student.',
-      )
-      return
-    }
-    setActionError('')
-    openExternalLink(whatsappUrl, true)
-  }
-
   return (
-    <div className="receipt-stage">
-      <section className="receipt-history" aria-labelledby="receipt-history-title">
-        <div className="receipt-history__header">
-          <div>
-            <h2 id="receipt-history-title">Payment receipts</h2>
-            <p>All receipts for {admission.studentName}</p>
-          </div>
-          <span>{receipts.length} receipts</span>
-        </div>
-        <div className="receipt-history__list">
-          {receipts.map((receipt) => (
-            <button
-              className={`receipt-history__item${receipt.paymentId === payment.paymentId ? ' receipt-history__item--active' : ''}`}
-              type="button"
-              aria-pressed={receipt.paymentId === payment.paymentId}
-              key={receipt.paymentId}
-              onClick={() => onSelectReceipt(receipt)}
-            >
-              <span>{receipt.receiptId}</span>
-              <strong>{formatCurrency(receipt.amountPaid)}</strong>
-              <small>{receipt.paymentDate} · {receipt.feeType}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <FeeReceipt admission={admission} payment={payment} ref={receiptRef} />
-
-      <div className="receipt-actions">
-        <Button onClick={handleDownload} disabled={isDownloading}><Download aria-hidden="true" size={16} />Download PDF</Button>
-        <Button variant="secondary" onClick={() => window.print()}><Printer aria-hidden="true" size={16} />Print</Button>
-        <Button variant="secondary" onClick={handleEmail}><Mail aria-hidden="true" size={16} />Send Email</Button>
-        <Button variant="secondary" onClick={handleWhatsApp}><MessageCircle aria-hidden="true" size={16} />WhatsApp</Button>
-      </div>
-      {actionError && <p className="receipt-actions__error" role="alert">{actionError}</p>}
-    </div>
+    <Card className="payment-success">
+      <header className="payment-card__header">
+        <div className="student-summary__icon" aria-hidden="true"><CheckCircle2 size={20} /></div>
+        <div><span>Payment saved</span><h2>Payment Recorded Successfully</h2></div>
+      </header>
+      <dl className="student-summary__grid">
+        <div><dt>Student</dt><dd>{admission.studentName}</dd></div>
+        <div><dt>Admission Number</dt><dd>{admission.admissionNumber}</dd></div>
+        <div><dt>Course</dt><dd>{admission.course}</dd></div>
+        <div><dt>Final Fee</dt><dd>{formatCurrency(admission.finalFee)}</dd></div>
+        <div><dt>Previous Paid</dt><dd>{formatCurrency(payment.previousPaid)}</dd></div>
+        <div><dt>Current Payment</dt><dd>{formatCurrency(payment.amountPaid)}</dd></div>
+        <div><dt>Total Paid</dt><dd>{formatCurrency(payment.totalPaid)}</dd></div>
+        <div><dt>Pending Balance</dt><dd>{formatCurrency(payment.balance)}</dd></div>
+      </dl>
+      <div className="payment-form__actions"><Button onClick={onDone}>Done</Button></div>
+    </Card>
   )
 }
 
 export function FeeReceiptWorkflow() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { admission, payment, setAdmission, setPayment } = useWorkflow()
+  const { admission, payment, clearWorkflow, setAdmission, setPayment } = useWorkflow()
   const routeState = location.state as WorkflowRouteState
   const hasSelectedStudent = Boolean(
     (routeState?.fromAdmission || routeState?.fromStudent) && admission,
   )
-  const currentStep = payment ? 'receipt' : 'payment'
-  const receipts = payment && admission
-    ? [
-        payment,
-      ]
-        .filter((record, index, records) =>
-          records.findIndex((candidate) => candidate.paymentId === record.paymentId) === index,
-        )
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    : []
 
   if (!hasSelectedStudent || !admission) {
     return <DirectStudentLookup onSelect={(student) => {
@@ -405,17 +284,19 @@ export function FeeReceiptWorkflow() {
 
   return (
     <>
-      <WorkflowProgress current={currentStep} />
+      <WorkflowProgress current="payment" />
       <StudentSummary admission={admission} />
       {payment ? (
-        <ReceiptPreview
+        <PaymentSuccess
           admission={admission}
           payment={payment}
-          receipts={receipts}
-          onSelectReceipt={setPayment}
+          onDone={() => {
+            clearWorkflow()
+            navigate('/payment-history')
+          }}
         />
       ) : (
-        <PaymentForm admission={admission} onGenerated={setPayment} />
+        <PaymentForm admission={admission} onRecorded={setPayment} />
       )}
     </>
   )

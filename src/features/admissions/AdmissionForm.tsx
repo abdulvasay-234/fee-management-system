@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Clock3,
   FileBadge2,
+  GraduationCap,
   House,
   IndianRupee,
   Info,
@@ -11,14 +12,14 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge, Button, Input, Modal, Select, Textarea } from '../../components/ui'
-import { parseAmount } from '../../utils/amount'
+import { formatAmountInput, parseAmount } from '../../utils/amount'
 import { createAdmission } from '../../services/api'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot } from '../workflow/workflowTypes'
 import { getCourseCodes } from '../courseCodes/courseCodeService'
-import { courseDurationOptions, genderOptions, getAdmissionCourseOptions } from './admissionOptions'
+import { courseDurationOptions, genderOptions, getAdmissionCourseOptions, yearOfPassingOptions } from './admissionOptions'
 import {
   calculateFinalFee,
   getAdmissionMetadata,
@@ -46,6 +47,7 @@ type SectionId =
   | 'timing'
   | 'personal'
   | 'address'
+  | 'education'
   | 'fees'
   | 'additional'
 
@@ -65,6 +67,7 @@ const initialOpenSections: Record<SectionId, boolean> = {
   timing: true,
   personal: true,
   address: true,
+  education: true,
   fees: true,
   additional: true,
 }
@@ -81,7 +84,7 @@ const fieldSections: Partial<Record<keyof AdmissionFormData, SectionId>> = {
   email: 'personal',
   pincode: 'address',
   totalCourseFee: 'fees',
-  discountPercentage: 'fees',
+  discount: 'fees',
 }
 
 function FormSection({
@@ -124,8 +127,10 @@ function FormSection({
 
 export function AdmissionForm() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { setAdmission } = useWorkflow()
-  const [formData, setFormData] = useState(initialAdmissionForm)
+  const visitorPrefill = (location.state as { visitorPrefill?: Partial<AdmissionFormData> } | null)?.visitorPrefill
+  const [formData, setFormData] = useState<AdmissionFormData>(() => ({ ...initialAdmissionForm, ...visitorPrefill }))
   const [errors, setErrors] = useState<AdmissionFormErrors>({})
   const [openSections, setOpenSections] = useState(initialOpenSections)
   const [preview, setPreview] = useState<AdmissionSnapshot | null>(null)
@@ -144,7 +149,7 @@ export function AdmissionForm() {
 
   const finalFee = calculateFinalFee(
     formData.totalCourseFee,
-    formData.discountPercentage,
+    formData.discount,
   )
   const admissionMetadata = getAdmissionMetadata(formData.admissionDate)
   const admissionNumber = getAdmissionNumberPreview(
@@ -169,11 +174,14 @@ export function AdmissionForm() {
     if (/^\d{0,2}$/.test(value)) updateField('batchNumber', value)
   }
 
-  function handlePercentageChange(event: ChangeEvent<HTMLInputElement>) {
-    const value = event.target.value
-    if (value === '' || /^\d{0,3}(?:\.\d{0,2})?$/.test(value)) {
-      updateField('discountPercentage', value)
-    }
+  function handleDiscountChange(event: ChangeEvent<HTMLInputElement>) {
+    const formattedValue = formatAmountInput(event.target.value)
+    if (formattedValue !== null) updateField('discount', formattedValue)
+  }
+
+  function handleTotalCourseFeeChange(event: ChangeEvent<HTMLInputElement>) {
+    const formattedValue = formatAmountInput(event.target.value)
+    if (formattedValue !== null) updateField('totalCourseFee', formattedValue)
   }
 
   function toggleSection(section: SectionId) {
@@ -204,7 +212,7 @@ export function AdmissionForm() {
     setIsSubmitting(true)
     try {
       const totalCourseFee = parseAmount(formData.totalCourseFee)
-      const discountPercentage = Number(formData.discountPercentage || 0)
+      const discount = parseAmount(formData.discount)
       const result = await createAdmission({
         fullName: formData.fullName.trim(),
         fathersName: formData.fatherName.trim(),
@@ -215,8 +223,10 @@ export function AdmissionForm() {
         email: formData.email.trim(),
         address: formData.address.trim(),
         city: formData.city.trim(),
+        collegeName: formData.collegeName.trim(),
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
+        degreeCourse: formData.degreeCourse.trim(),
         course: formData.course,
         batch: formData.batchNumber,
         startTime: formData.startTime,
@@ -224,8 +234,9 @@ export function AdmissionForm() {
         admissionDate: formData.admissionDate,
         courseDuration: formData.courseDuration,
         totalCourseFee,
-        discount: Math.round((totalCourseFee * discountPercentage) * 100) / 10000,
+        discount,
         remarks: formData.remarks.trim(),
+        yearOfPassing: formData.yearOfPassing,
       })
       const { student } = result
       const admission: AdmissionSnapshot = {
@@ -234,7 +245,7 @@ export function AdmissionForm() {
         batchNumber: student.batch,
         course: student.course,
         courseDuration: student.courseDuration,
-        discountPercentage,
+        discountPercentage: totalCourseFee ? (discount / totalCourseFee) * 100 : 0,
         email: formData.email,
         enrollmentMonth: student.enrollmentMonth,
         enrollmentYear: student.enrollmentYear,
@@ -275,6 +286,11 @@ export function AdmissionForm() {
   return (
     <>
       <form className="admission-form" noValidate onSubmit={handleSubmit}>
+        {visitorPrefill && (
+          <div className="admission-prefill-note" role="status">
+            Visitor details were prefilled from a walk-in. Review and complete the admission fields before submitting.
+          </div>
+        )}
         <FormSection
           id="admission"
           isOpen={openSections.admission}
@@ -342,24 +358,38 @@ export function AdmissionForm() {
         </FormSection>
 
         <FormSection
+          id="education"
+          isOpen={openSections.education}
+          number="05"
+          onToggle={toggleSection}
+          title="Education Details"
+          description="Most recent college and course information."
+          icon={<GraduationCap size={20} />}
+        >
+          <Select id="yearOfPassing" name="yearOfPassing" label="Year of Passing" options={yearOfPassingOptions} value={formData.yearOfPassing} onChange={handleInputChange} />
+          <Input id="collegeName" name="collegeName" label="College Name" value={formData.collegeName} onChange={handleInputChange} />
+          <Input id="degreeCourse" name="degreeCourse" label="Degree / Course" value={formData.degreeCourse} onChange={handleInputChange} />
+        </FormSection>
+
+        <FormSection
           id="fees"
           isOpen={openSections.fees}
-          number="05"
+          number="06"
           onToggle={toggleSection}
           title="Course & Fee Information"
           description="Course duration and agreed fee structure."
           icon={<IndianRupee size={20} />}
         >
-          <Select id="courseDuration" name="courseDuration" label="Course Duration" options={courseDurationOptions} value={formData.courseDuration} onChange={handleInputChange} />
-          <Input id="totalCourseFee" name="totalCourseFee" label="Total Course Fee" required value={formData.totalCourseFee} disabled hint="Fixed course fee for all regular programs." />
-          <Input id="discountPercentage" name="discountPercentage" label="Discount (%)" type="text" inputMode="decimal" placeholder="0" value={formData.discountPercentage} error={errors.discountPercentage} hint="Percentage deducted from the total course fee." onChange={handlePercentageChange} />
-          <Input containerClassName="admission-final-fee" id="finalFee" label="Final Fee" value={finalFee} placeholder="0" readOnly hint="After percentage discount, rounded to the nearest rupee." />
+          <Select id="courseDuration" name="courseDuration" label="Course Duration" required options={courseDurationOptions} value={formData.courseDuration} error={errors.courseDuration} onChange={handleInputChange} />
+          <Input id="totalCourseFee" name="totalCourseFee" label="Total Course Fee" required value={formData.totalCourseFee} inputMode="decimal" onChange={handleTotalCourseFeeChange} error={errors.totalCourseFee} hint="Enter the agreed course fee." />
+          <Input id="discount" name="discount" label="Discount" type="text" inputMode="decimal" placeholder="0" value={formData.discount} error={errors.discount} hint="Amount deducted from the total course fee." onChange={handleDiscountChange} />
+          <Input containerClassName="admission-final-fee" id="finalFee" label="Final Fee" value={finalFee} placeholder="0" readOnly hint="Total course fee minus discount." />
         </FormSection>
 
         <FormSection
           id="additional"
           isOpen={openSections.additional}
-          number="06"
+          number="07"
           onToggle={toggleSection}
           title="Additional Information"
           description="Optional internal notes for academy staff."

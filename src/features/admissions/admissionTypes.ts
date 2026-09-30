@@ -3,10 +3,12 @@ export interface AdmissionFormData {
   admissionDate: string
   batchNumber: string
   city: string
+  collegeName: string
   course: string
   courseDuration: string
   dateOfBirth: string
-  discountPercentage: string
+  degreeCourse: string
+  discount: string
   email: string
   endTime: string
   fatherName: string
@@ -19,6 +21,7 @@ export interface AdmissionFormData {
   startTime: string
   state: string
   totalCourseFee: string
+  yearOfPassing: string
 }
 
 export type AdmissionFormErrors = Partial<

@@ -1,5 +1,17 @@
+import { getIdToken, notifyAuthFailure } from '../auth/authService'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const REQUEST_TIMEOUT_MS = 15_000
+
+export class ApiHttpError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiHttpError'
+    this.status = status
+  }
+}
 
 export interface ApiError {
   message: string
@@ -22,8 +34,10 @@ export interface AdmissionPayload {
   email: string
   address: string
   city: string
+  collegeName: string
   state: string
   pincode: string
+  degreeCourse: string
   course: string
   batch: string
   startTime: string
@@ -33,6 +47,7 @@ export interface AdmissionPayload {
   totalCourseFee: number
   discount: number
   remarks: string
+  yearOfPassing: string
 }
 
 export interface AdmissionResponse {
@@ -56,9 +71,7 @@ export interface PaymentPayload {
   studentId: string
   course: string
   amountPaid: number
-  paymentMode: string
   paymentDate: string
-  feeType: string
   remarks: string
 }
 
@@ -149,13 +162,83 @@ export interface DashboardData {
   paymentModes: Array<{ label: string; value: number }>
 }
 
+export interface VisitorRecord {
+  visitorId: string
+  fullName: string
+  mobileNumber: string
+  email: string
+  college: string
+  degreeCourse: string
+  yearOfGraduation: string
+  courseInterestedIn: string
+  otherCourse: string
+  referral: string
+  otherReferral: string
+  notes: string
+  consultedWith: string
+  visitDate: string
+  entryTime: string
+  exitTime: string
+  visitStatus: string
+  followUpRequired: string
+  conversionStatus: string
+  admissionId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FollowUpRecord {
+  followUpId: string
+  visitorId: string
+  fullName: string
+  mobileNumber: string
+  courseInterestedIn: string
+  followUpNumber: number
+  scheduledDate: string
+  completedDate: string
+  followUpStatus: string
+  contactMethod: string
+  notes: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WalkInPayload {
+  fullName: string
+  mobileNumber: string
+  email: string
+  college: string
+  degreeCourse: string
+  yearOfGraduation: string
+  courseInterestedIn: string
+  otherCourse: string
+  referral: string
+  otherReferral: string
+  notes: string
+  consultedWith: string
+  followUpRequired: string
+}
+
+export interface FollowUpPayload {
+  visitorId: string
+  scheduledDate: string
+  followUpStatus: string
+  contactMethod: string
+  notes: string
+}
+
 type ApiSuccess = { success: true }
 
 function getApiUrl() {
   if (!API_BASE_URL) {
     throw new Error('The LSA API is not configured.')
   }
-  return API_BASE_URL
+  const url = new URL(API_BASE_URL)
+  if (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com') {
+    throw new Error('The browser API must use the authenticated LSA gateway.')
+  }
+  return API_BASE_URL.replace(/\/$/, '')
 }
 
 function toUserMessage(error: unknown) {
@@ -163,12 +246,28 @@ function toUserMessage(error: unknown) {
   return 'Unable to complete the request. Please try again.'
 }
 
-async function request<T>(path = '', init: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path = '',
+  init: RequestInit = {},
+  credential = getIdToken(),
+  notifyFailure = true,
+): Promise<T> {
+  if (!credential) throw new ApiHttpError('Authentication required.', 401)
   const controller = new AbortController()
   const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${getApiUrl()}${path}`, { ...init, signal: controller.signal })
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${credential}`)
+    const response = await fetch(`${getApiUrl()}${path}`, { ...init, headers, signal: controller.signal })
+    if (response.status === 401) {
+      if (notifyFailure) notifyAuthFailure('sessionExpired', credential)
+      throw new ApiHttpError('Your session has expired. Please sign in again.', 401)
+    }
+    if (response.status === 403) {
+      if (notifyFailure) notifyAuthFailure('accessDenied', credential)
+      throw new ApiHttpError('Your Google account is not authorized to access this application.', 403)
+    }
     if (!response.ok) throw new Error('The LSA API could not complete the request.')
 
     const payload: unknown = await response.json()
@@ -178,6 +277,7 @@ async function request<T>(path = '', init: RequestInit = {}): Promise<T> {
     }
     return payload as T
   } catch (error) {
+    if (error instanceof ApiHttpError) throw error
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('The LSA API request timed out. Please try again.')
     }
@@ -185,6 +285,10 @@ async function request<T>(path = '', init: RequestInit = {}): Promise<T> {
   } finally {
     window.clearTimeout(timeoutId)
   }
+}
+
+export function validateCredential(credential: string) {
+  return request<{ success: true; data: CourseCode[] }>('?action=course-codes', {}, credential, false)
 }
 
 function post<T>(payload: Record<string, unknown>) {
@@ -253,4 +357,38 @@ export async function fetchDashboard() {
   const result = await request<{ success: true; data: DashboardData }>('?action=dashboard')
   if (!result.data) throw new Error('The LSA API returned invalid dashboard data.')
   return result.data
+}
+
+export async function fetchWalkIns(filters: Record<string, string | undefined> = {}) {
+  const query = queryString(filters)
+  const result = await request<{ success: true; data: VisitorRecord[] }>(`?action=walkins${query ? `&${query}` : ''}`)
+  if (!Array.isArray(result.data)) throw new Error('The LSA API returned invalid walk-in records.')
+  return result.data
+}
+
+export async function fetchFollowUps(filters: Record<string, string | undefined> = {}) {
+  const query = queryString(filters)
+  const result = await request<{ success: true; data: FollowUpRecord[] }>(`?action=followups${query ? `&${query}` : ''}`)
+  if (!Array.isArray(result.data)) throw new Error('The LSA API returned invalid follow-up records.')
+  return result.data
+}
+
+export function createWalkIn(payload: WalkInPayload) {
+  return post<{ success: true; data: VisitorRecord }>({ action: 'add-walkin', ...payload })
+}
+
+export function updateWalkIn(visitorId: string, payload: WalkInPayload) {
+  return post<{ success: true; data: VisitorRecord }>({ action: 'update-walkin', visitorId, ...payload })
+}
+
+export function markWalkInExit(visitorId: string) {
+  return post<{ success: true; data: VisitorRecord }>({ action: 'mark-walkin-exit', visitorId })
+}
+
+export function createFollowUp(payload: FollowUpPayload) {
+  return post<{ success: true; data: FollowUpRecord }>({ action: 'add-followup', ...payload })
+}
+
+export function updateFollowUp(followUpId: string, payload: Omit<FollowUpPayload, 'visitorId'>) {
+  return post<{ success: true; data: FollowUpRecord }>({ action: 'update-followup', followUpId, ...payload })
 }

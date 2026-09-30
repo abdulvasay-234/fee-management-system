@@ -10,10 +10,12 @@ export const initialAdmissionForm: AdmissionFormData = {
   admissionDate: '',
   batchNumber: '01',
   city: '',
+  collegeName: '',
   course: '',
   courseDuration: '',
   dateOfBirth: '',
-  discountPercentage: '',
+  degreeCourse: '',
+  discount: '',
   email: '',
   endTime: '20:00',
   fatherName: '',
@@ -26,13 +28,14 @@ export const initialAdmissionForm: AdmissionFormData = {
   startTime: '18:00',
   state: '',
   totalCourseFee: '45,000',
+  yearOfPassing: '',
 }
 
-export function calculateFinalFee(total: string, discountPercentage: string) {
+export function calculateFinalFee(total: string, discount: string) {
   if (total === '') return ''
   const totalAmount = parseAmount(total)
-  const percentage = Number(discountPercentage || 0)
-  const finalAmount = totalAmount - (totalAmount * percentage) / 100
+  const discountAmount = parseAmount(discount)
+  const finalAmount = totalAmount - discountAmount
 
   return Math.round(Math.max(finalAmount, 0)).toLocaleString('en-IN')
 }
@@ -85,6 +88,7 @@ export function validateAdmissionForm(data: AdmissionFormData) {
     errors.pincode = 'Enter a valid 6 digit pincode.'
   }
   if (!data.course) errors.course = 'Select a course.'
+  if (!data.courseDuration) errors.courseDuration = 'Select the course duration.'
   if (!/^\d{2}$/.test(data.batchNumber)) {
     errors.batchNumber = 'Enter a two-digit batch number, such as 01.'
   }
@@ -97,19 +101,19 @@ export function validateAdmissionForm(data: AdmissionFormData) {
   }
 
   const totalFee = parseAmount(data.totalCourseFee)
-  const discountPercentage = Number(data.discountPercentage || 0)
+  const discount = parseAmount(data.discount)
   if (!data.totalCourseFee) {
     errors.totalCourseFee = 'Enter the total course fee.'
   } else if (totalFee < 0) {
     errors.totalCourseFee = 'Total course fee cannot be negative.'
   }
-  if (discountPercentage < 0) {
-    errors.discountPercentage = 'Discount percentage cannot be negative.'
+  if (discount < 0) {
+    errors.discount = 'Discount cannot be negative.'
   }
-  if (data.discountPercentage && !data.totalCourseFee) {
+  if (data.discount && !data.totalCourseFee) {
     errors.totalCourseFee = 'Enter the total course fee before adding a discount.'
-  } else if (discountPercentage > 100) {
-    errors.discountPercentage = 'Discount percentage cannot exceed 100%.'
+  } else if (discount > totalFee) {
+    errors.discount = 'Discount cannot exceed the total course fee.'
   }
 
   return errors

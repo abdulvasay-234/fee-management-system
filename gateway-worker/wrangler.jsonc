@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lsa-api-gateway",
+  "account_id": "4166dce3ff421516b254c6fab5b619ae",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-30",
+  "workers_dev": true,
+  "vars": {
+    "GOOGLE_CLIENT_ID": "1048697738548-l681khi72a68o1fp2np80kpet911scn6.apps.googleusercontent.com",
+    "ALLOWED_ORIGIN": "https://abdulvasay-234.github.io,http://localhost:5173"
+  },
+  "secrets": {
+    "required": [
+      "APPS_SCRIPT_GATEWAY_SECRET",
+      "ALLOWED_EMAILS",
+      "APPS_SCRIPT_URL"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.05
+  }
+}

@@ -9,6 +9,7 @@ import {
   UsersRound,
   WalletCards,
 } from 'lucide-react'
+import { Badge } from '../../components/ui'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button, Card, EmptyState, Input, Select, Table } from '../../components/ui'
@@ -24,6 +25,7 @@ interface StudentFilters {
   course: string
   month: string
   query: string
+  status: string
   year: string
 }
 
@@ -32,6 +34,7 @@ const emptyFilters: StudentFilters = {
   course: '',
   month: '',
   query: '',
+  status: '',
   year: '',
 }
 
@@ -91,10 +94,15 @@ export function StudentsDirectory() {
   const batchOptions = optionList(students.map((student) => student.batch), 'All Batches')
   const yearOptions = optionList(students.map((student) => student.enrollmentYear), 'All Years')
   const monthOptions = optionList(students.map((student) => student.enrollmentMonth), 'All Months')
+  const statusOptions = [
+    { label: 'All Payment Status', value: '' },
+    { label: 'Pending Balance', value: 'pending' },
+    { label: 'Cleared', value: 'cleared' },
+  ]
 
   const filteredStudents = students.filter((student) => {
     const query = filters.query.trim().toLowerCase()
-    const matchesQuery = !query || [student.studentId, student.fullName, student.mobileNumber]
+    const matchesQuery = !query || [student.studentId, student.fullName, student.mobileNumber, student.email]
       .some((value) => value.toLowerCase().includes(query))
 
     return matchesQuery
@@ -102,6 +110,7 @@ export function StudentsDirectory() {
       && (!filters.batch || student.batch === filters.batch)
       && (!filters.year || student.enrollmentYear === filters.year)
       && (!filters.month || student.enrollmentMonth === filters.month)
+      && (!filters.status || (filters.status === 'pending' ? student.balance > 0 : student.balance <= 0))
   })
 
   function updateFilter(field: keyof StudentFilters, value: string) {
@@ -162,7 +171,7 @@ export function StudentsDirectory() {
             containerClassName="student-filters__search"
             id="studentDirectorySearch"
             label="Search"
-            placeholder="Search by admission number, name, or mobile number..."
+            placeholder="Search by ID, name, mobile, or email..."
             value={draftFilters.query}
             onChange={(event) => updateFilter('query', event.target.value)}
           />
@@ -170,6 +179,7 @@ export function StudentsDirectory() {
           <Select id="studentBatchFilter" label="Batch" options={batchOptions} value={draftFilters.batch} onChange={(event) => updateFilter('batch', event.target.value)} />
           <Select id="studentYearFilter" label="Enrollment Year" options={yearOptions} value={draftFilters.year} onChange={(event) => updateFilter('year', event.target.value)} />
           <Select id="studentMonthFilter" label="Enrollment Month" options={monthOptions} value={draftFilters.month} onChange={(event) => updateFilter('month', event.target.value)} />
+          <Select id="studentStatusFilter" label="Payment Status" options={statusOptions} value={draftFilters.status} onChange={(event) => updateFilter('status', event.target.value)} />
           <div className="student-filters__actions">
             <Button type="submit"><Search aria-hidden="true" size={15} />Search</Button>
             <Button type="button" variant="secondary" onClick={clearFilters}><RotateCcw aria-hidden="true" size={15} />Clear Filters</Button>
@@ -188,12 +198,14 @@ export function StudentsDirectory() {
               <th>Admission Number</th>
               <th>Student Name</th>
               <th>Mobile Number</th>
+              <th>Email</th>
               <th>Course</th>
               <th>Batch</th>
-              <th>Enrollment</th>
+              <th>Admission Date</th>
               <th>Final Fee</th>
               <th>Paid</th>
               <th>Balance</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -203,12 +215,14 @@ export function StudentsDirectory() {
                 <td><strong>{student.studentId}</strong></td>
                 <td>{student.fullName}</td>
                 <td>{student.mobileNumber}</td>
+                <td>{student.email || 'Not provided'}</td>
                 <td>{student.course}</td>
                 <td>{student.batch}</td>
-                <td>{student.enrollmentMonth} {student.enrollmentYear}</td>
+                <td>{student.admissionDate}</td>
                 <td>{currencyFormatter.format(student.finalFee)}</td>
                 <td>{currencyFormatter.format(student.totalPaid)}</td>
                 <td className={student.balance > 0 ? 'students-table__balance' : ''}>{currencyFormatter.format(student.balance)}</td>
+                <td><Badge variant={student.balance > 0 ? 'red' : 'navy'}>{student.balance > 0 ? 'Pending' : 'Cleared'}</Badge></td>
                 <td>
                   <div className="students-table__actions">
                     <Button variant="secondary" onClick={() => void viewStudent(student)}><Eye aria-hidden="true" size={14} />View</Button>
