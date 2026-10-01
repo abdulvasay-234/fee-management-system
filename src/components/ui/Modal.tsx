@@ -3,6 +3,7 @@ import { useEffect, useId, type ReactNode } from 'react'
 import { Button } from './Button'
 
 interface ModalProps {
+  className?: string
   children: ReactNode
   description?: string
   footer?: ReactNode
@@ -12,6 +13,7 @@ interface ModalProps {
 }
 
 export function Modal({
+  className,
   children,
   description,
   footer,
@@ -36,7 +38,7 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="modal" role="presentation" onMouseDown={onClose}>
+    <div className={`modal${className ? ` ${className}` : ''}`} role="presentation" onMouseDown={onClose}>
       <section
         className="modal__dialog"
         role="dialog"

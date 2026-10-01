@@ -5,6 +5,7 @@ import { AppLayout } from './components/layout/AppLayout'
 import { WorkflowProvider } from './features/workflow/WorkflowProvider'
 import { CourseCodesPage } from './pages/CourseCodesPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { EnquiriesPage } from './pages/EnquiriesPage'
 import { FeeReceiptPage } from './pages/FeeReceiptPage'
 import { NewAdmissionPage } from './pages/NewAdmissionPage'
 import { PaymentHistoryPage } from './pages/PaymentHistoryPage'
@@ -29,6 +30,7 @@ function App() {
             <Route path="fee-receipt" element={<FeeReceiptPage />} />
             <Route path="students" element={<StudentsPage />} />
             <Route path="admissions" element={<StudentsPage />} />
+            <Route path="enquiries" element={<EnquiriesPage />} />
             <Route path="walk-ins" element={<WalkInsPage />} />
             <Route path="payment-history" element={<PaymentHistoryPage />} />
             <Route path="course-codes" element={<CourseCodesPage />} />

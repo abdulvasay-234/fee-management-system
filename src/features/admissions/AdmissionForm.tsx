@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -11,15 +12,24 @@ import {
   RotateCcw,
   UserRound,
 } from 'lucide-react'
-import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Input, Modal, Select, Textarea } from '../../components/ui'
+import { Badge, Button, Input, Modal, SearchableSelect, Select, Textarea } from '../../components/ui'
 import { formatAmountInput, parseAmount } from '../../utils/amount'
-import { createAdmission } from '../../services/api'
+import {
+  ApiOutcomeUnknownError,
+  convertEnquiry,
+  createAdmission,
+  fetchStudent,
+  type AdmissionPayload,
+  type ConvertEnquiryResponse,
+  type EnquiryRecord,
+} from '../../services/api'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot } from '../workflow/workflowTypes'
-import { getCourseCodes } from '../courseCodes/courseCodeService'
-import { courseDurationOptions, genderOptions, getAdmissionCourseOptions, yearOfPassingOptions } from './admissionOptions'
+import { getCachedCourseCodes, getCourseCodeServiceStatus, getCourseCodes } from '../courseCodes/courseCodeService'
+import type { CourseCode } from '../courseCodes/courseCodeTypes'
+import { courseDurationOptions, genderOptions, yearOfPassingOptions } from './admissionOptions'
 import {
   calculateFinalFee,
   getAdmissionMetadata,
@@ -27,6 +37,10 @@ import {
   initialAdmissionForm,
   validateAdmissionForm,
 } from './admissionFormUtils'
+import { createAdmissionConfirmationData, type AdmissionConfirmationData } from './admissionConfirmation'
+import { AdmissionConfirmationDocument } from './AdmissionConfirmationDocument'
+import { AdmissionConfirmationDocumentModal } from './AdmissionConfirmationDocumentModal'
+import { downloadAdmissionConfirmationPdf } from './admissionConfirmationActions'
 import type { AdmissionFormData, AdmissionFormErrors } from './admissionTypes'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -62,6 +76,41 @@ interface FormSectionProps {
   title: string
 }
 
+type AdmissionFormMode = 'create' | 'convert'
+type ConversionState = 'idle' | 'submitting' | 'success' | 'definitive-error' | 'ambiguous'
+
+interface AdmissionFormProps {
+  enquiry?: EnquiryRecord
+  mode?: AdmissionFormMode
+  onClose?: () => void
+  onConversionOutcomeUnknown?: () => void
+  onConversionSuccess?: (result: ConvertEnquiryResponse) => void
+  onViewStudent?: (studentId: string) => void
+}
+
+function getInitialFormData(mode: AdmissionFormMode, enquiry?: EnquiryRecord, visitorPrefill?: Partial<AdmissionFormData>): AdmissionFormData {
+  if (mode !== 'convert' || !enquiry) return { ...initialAdmissionForm, ...visitorPrefill }
+  return {
+    ...initialAdmissionForm,
+    admissionDate: '',
+    batchNumber: '',
+    course: enquiry.courseInterestedIn,
+    courseDuration: '',
+    otherProgramDetails: enquiry.otherProgramDetails ?? '',
+    discount: '',
+    endTime: '',
+    fullName: enquiry.fullName,
+    mobileNumber: enquiry.mobileNumber,
+    email: enquiry.email,
+    collegeName: enquiry.college,
+    degreeCourse: [enquiry.educationLevel || enquiry.degreeCourse || '', enquiry.specialization].filter(Boolean).join(' - '),
+    yearOfPassing: enquiry.yearOfGraduation,
+    remarks: enquiry.notes,
+    startTime: '',
+    totalCourseFee: '',
+  }
+}
+
 const initialOpenSections: Record<SectionId, boolean> = {
   admission: true,
   timing: true,
@@ -85,6 +134,7 @@ const fieldSections: Partial<Record<keyof AdmissionFormData, SectionId>> = {
   pincode: 'address',
   totalCourseFee: 'fees',
   discount: 'fees',
+  otherProgramDetails: 'fees',
 }
 
 function FormSection({
@@ -125,24 +175,55 @@ function FormSection({
   )
 }
 
-export function AdmissionForm() {
+export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionOutcomeUnknown, onConversionSuccess, onViewStudent }: AdmissionFormProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { setAdmission } = useWorkflow()
   const visitorPrefill = (location.state as { visitorPrefill?: Partial<AdmissionFormData> } | null)?.visitorPrefill
-  const [formData, setFormData] = useState<AdmissionFormData>(() => ({ ...initialAdmissionForm, ...visitorPrefill }))
+  const [formData, setFormData] = useState<AdmissionFormData>(() => getInitialFormData(mode, enquiry, visitorPrefill))
   const [errors, setErrors] = useState<AdmissionFormErrors>({})
   const [openSections, setOpenSections] = useState(initialOpenSections)
   const [preview, setPreview] = useState<AdmissionSnapshot | null>(null)
   const [submitError, setSubmitError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [conversionState, setConversionState] = useState<ConversionState>('idle')
+  const [conversionResult, setConversionResult] = useState<ConvertEnquiryResponse | null>(null)
+  const [conversionError, setConversionError] = useState('')
+  const [confirmationData, setConfirmationData] = useState<AdmissionConfirmationData | null>(null)
+  const [confirmationLoadError, setConfirmationLoadError] = useState('')
+  const [isAdmissionDocumentOpen, setIsAdmissionDocumentOpen] = useState(false)
+  const [pdfError, setPdfError] = useState('')
+  const [printError, setPrintError] = useState('')
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [isLoadingCourses, setIsLoadingCourses] = useState(true)
   const [, setCourseCodeRevision] = useState(0)
-  const courseOptions = getAdmissionCourseOptions()
+  const [courseLoadError, setCourseLoadError] = useState('')
+  const submittingRef = useRef(false)
+  const confirmationDocumentRef = useRef<HTMLElement | null>(null)
+  const courseCodes = getCachedCourseCodes()
+  const activeCourses = courseCodes.filter((course) => course.active && (course.type === 'Regular' || (mode === 'convert' && course.code === '00')))
+  const courseOptions = activeCourses.map((course: CourseCode) => ({
+    value: course.name,
+    label: course.name,
+    description: `${course.code} · ${course.type}`,
+  }))
+  const courseLoadMessage = courseLoadError || (courseCodes.length > 0 && activeCourses.length === 0 ? 'No active regular courses are available.' : '')
+
+  function handleCourseSelection(value: string) {
+    updateField('course', value)
+    const courseCode = activeCourses.find((course) => course.name === value)?.code
+    if (courseCode !== '00') updateField('otherProgramDetails', '')
+  }
 
   useEffect(() => {
     let active = true
     void getCourseCodes().then(() => {
-      if (active) setCourseCodeRevision((value) => value + 1)
+      if (!active) return
+      const serviceStatus = getCourseCodeServiceStatus()
+      setCourseLoadError(serviceStatus.error?.message ?? '')
+      setCourseCodeRevision((value) => value + 1)
+    }).finally(() => {
+      if (active) setIsLoadingCourses(false)
     })
     return () => { active = false }
   }, [])
@@ -188,10 +269,36 @@ export function AdmissionForm() {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }))
   }
 
+  async function downloadConfirmationPdf() {
+    if (!confirmationDocumentRef.current || !confirmationData) return
+    setIsDownloadingPdf(true)
+    setPdfError('')
+    try {
+      await downloadAdmissionConfirmationPdf(confirmationDocumentRef.current, confirmationData.studentId)
+    } catch {
+      setPdfError('Unable to generate the PDF. The admission was created successfully.')
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
+  function printConfirmation() {
+    setPrintError('')
+    try {
+      if (typeof window.print !== 'function') throw new Error('Printing is unavailable in this browser.')
+      window.print()
+    } catch {
+      setPrintError('Print is unavailable. The admission was created successfully.')
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSubmitting) return
+    if (submittingRef.current || conversionState === 'ambiguous' || conversionState === 'success') return
     const nextErrors = validateAdmissionForm(formData)
+    if (!activeCourses.some((course) => course.name === formData.course)) {
+      nextErrors.course = courseLoadError ? 'Active courses could not be loaded. Retry when the course list is available.' : 'Choose an active course from the list.'
+    }
     setErrors(nextErrors)
 
     const firstError = Object.keys(nextErrors)[0] as keyof AdmissionFormData | undefined
@@ -209,11 +316,16 @@ export function AdmissionForm() {
     }
 
     setSubmitError('')
+    submittingRef.current = true
     setIsSubmitting(true)
+    if (mode === 'convert') {
+      setConversionState('submitting')
+      setConversionError('')
+    }
     try {
       const totalCourseFee = parseAmount(formData.totalCourseFee)
       const discount = parseAmount(formData.discount)
-      const result = await createAdmission({
+      const admissionPayload: AdmissionPayload = {
         fullName: formData.fullName.trim(),
         fathersName: formData.fatherName.trim(),
         mothersName: formData.motherName.trim(),
@@ -227,6 +339,7 @@ export function AdmissionForm() {
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
         degreeCourse: formData.degreeCourse.trim(),
+        ...(mode === 'convert' ? { otherProgramDetails: formData.otherProgramDetails.trim() } : {}),
         course: formData.course,
         batch: formData.batchNumber,
         startTime: formData.startTime,
@@ -235,34 +348,76 @@ export function AdmissionForm() {
         courseDuration: formData.courseDuration,
         totalCourseFee,
         discount,
-        remarks: formData.remarks.trim(),
+        remarks: mode === 'convert' ? formData.remarks : formData.remarks.trim(),
         yearOfPassing: formData.yearOfPassing,
-      })
-      const { student } = result
-      const admission: AdmissionSnapshot = {
-        admissionDate: student.admissionDate,
-        admissionNumber: student.studentId,
-        batchNumber: student.batch,
-        course: student.course,
-        courseDuration: student.courseDuration,
-        discountPercentage: totalCourseFee ? (discount / totalCourseFee) * 100 : 0,
-        email: formData.email,
-        enrollmentMonth: student.enrollmentMonth,
-        enrollmentYear: student.enrollmentYear,
-        finalFee: student.finalFee,
-        mobileNumber: formData.mobileNumber,
-        previousPaid: 0,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        studentName: student.fullName,
-        totalCourseFee: student.totalCourseFee,
       }
-      setAdmission(admission)
-      setPreview(admission)
+      if (mode === 'convert') {
+        if (!enquiry) throw new Error('Conversion requires a source enquiry.')
+        const response = await convertEnquiry({ enquiryId: enquiry.enquiryId, admission: admissionPayload })
+        if (!response.data?.studentId && !response.data?.admissionId) {
+          throw new ApiOutcomeUnknownError('The conversion response did not include an Admission ID.')
+        }
+        setConversionResult(response)
+        setConversionState('success')
+        onConversionSuccess?.(response)
+        const studentId = response.data.studentId || response.data.admissionId
+        try {
+          const result = await fetchStudent(studentId)
+          setConfirmationData(createAdmissionConfirmationData(result.student, response.data.enquiryId || enquiry.enquiryId))
+        } catch {
+          setConfirmationLoadError('Admission created successfully, but the Admission details could not be loaded. You can still view the Student record.')
+        }
+      } else {
+        const result = await createAdmission(admissionPayload)
+        const { student } = result
+        const admission: AdmissionSnapshot = {
+          admissionDate: student.admissionDate,
+          admissionNumber: student.studentId,
+          batchNumber: student.batch,
+          course: student.course,
+          courseDuration: student.courseDuration,
+          discountPercentage: totalCourseFee ? (discount / totalCourseFee) * 100 : 0,
+          email: formData.email,
+          enrollmentMonth: student.enrollmentMonth,
+          enrollmentYear: student.enrollmentYear,
+          finalFee: student.finalFee,
+          mobileNumber: formData.mobileNumber,
+          previousPaid: 0,
+          startTime: formData.startTime,
+          endTime: formData.endTime,
+          studentName: student.fullName,
+          totalCourseFee: student.totalCourseFee,
+        }
+        setAdmission(admission)
+        setPreview(admission)
+        setConfirmationData(null)
+        setConfirmationLoadError('')
+        setIsAdmissionDocumentOpen(false)
+        try {
+          const details = await fetchStudent(student.studentId)
+          setConfirmationData(createAdmissionConfirmationData(details.student, ''))
+          setIsAdmissionDocumentOpen(true)
+        } catch {
+          setConfirmationLoadError('The student was registered, but the Admission document could not be loaded. Open the Student record and try again.')
+        }
+      }
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Unable to register the student.')
+      if (mode === 'convert') {
+        if (error instanceof ApiOutcomeUnknownError) {
+          setConversionState('ambiguous')
+          setConversionError('Conversion status could not be confirmed. Do not submit again until the enquiry and admission records have been checked.')
+          onConversionOutcomeUnknown?.()
+        } else {
+          setConversionState('definitive-error')
+          setConversionError(error instanceof Error ? error.message : 'The API rejected the conversion request.')
+        }
+      } else {
+        setSubmitError(error instanceof Error ? error.message : 'Unable to register the student.')
+      }
     } finally {
+      submittingRef.current = false
       setIsSubmitting(false)
+      if (mode === 'convert') setConversionState((current) => current === 'submitting' ? 'idle' : current)
     }
   }
 
@@ -271,6 +426,9 @@ export function AdmissionForm() {
     setErrors({})
     setOpenSections(initialOpenSections)
     setPreview(null)
+    setConfirmationData(null)
+    setConfirmationLoadError('')
+    setIsAdmissionDocumentOpen(false)
   }
 
   function continueToPayment() {
@@ -283,10 +441,9 @@ export function AdmissionForm() {
     navigate('/')
   }
 
-  return (
-    <>
-      <form className="admission-form" noValidate onSubmit={handleSubmit}>
-        {visitorPrefill && (
+  const admissionFields = (
+      <form id={mode === 'convert' ? 'conversion-admission-form' : 'admission-form'} className={`admission-form${mode === 'convert' ? ' admission-form--conversion' : ''}`} noValidate onSubmit={handleSubmit}>
+        {mode === 'create' && visitorPrefill && (
           <div className="admission-prefill-note" role="status">
             Visitor details were prefilled from a walk-in. Review and complete the admission fields before submitting.
           </div>
@@ -300,7 +457,20 @@ export function AdmissionForm() {
           description="Official course, batch, and admission date."
           icon={<FileBadge2 size={20} />}
         >
-          <Select id="course" name="course" label="Course / Program" required options={courseOptions} value={formData.course} error={errors.course} onChange={handleInputChange} />
+          <SearchableSelect
+            id="course"
+            label="Course / Program"
+            required
+            loading={isLoadingCourses}
+            loadingText="Loading active courses..."
+            options={courseOptions}
+            value={formData.course}
+            error={errors.course || (courseLoadMessage ? 'Active Course Codes are unavailable.' : undefined)}
+            legacyHint="This course is no longer active. Choose an active course to continue."
+            placeholder="Search course..."
+            onChange={handleCourseSelection}
+          />
+          {courseLoadMessage && <p className="field__message field__message--error admission-form__full" role="alert">{courseLoadMessage}</p>}
           <Input id="batchNumber" name="batchNumber" label="Batch Number" required inputMode="numeric" maxLength={2} placeholder="01" value={formData.batchNumber} error={errors.batchNumber} hint="Two-digit numeric batch code." onChange={handleBatchChange} />
           <Input id="admissionDate" name="admissionDate" label="Admission Date" required type="date" value={formData.admissionDate} error={errors.admissionDate} onChange={handleInputChange} />
           <Input id="admissionNumber" label="Admission Number" value={admissionNumber} disabled hint="Preview only. The backend will assign the final sequence." />
@@ -381,6 +551,7 @@ export function AdmissionForm() {
           icon={<IndianRupee size={20} />}
         >
           <Select id="courseDuration" name="courseDuration" label="Course Duration" required options={courseDurationOptions} value={formData.courseDuration} error={errors.courseDuration} onChange={handleInputChange} />
+          {formData.course.trim().toLowerCase() === 'other programs' && <Input id="otherProgramDetails" name="otherProgramDetails" label="Program / Training Interested In" required value={formData.otherProgramDetails} error={errors.otherProgramDetails} onChange={handleInputChange} />}
           <Input id="totalCourseFee" name="totalCourseFee" label="Total Course Fee" required value={formData.totalCourseFee} inputMode="decimal" onChange={handleTotalCourseFeeChange} error={errors.totalCourseFee} hint="Enter the agreed course fee." />
           <Input id="discount" name="discount" label="Discount" type="text" inputMode="decimal" placeholder="0" value={formData.discount} error={errors.discount} hint="Amount deducted from the total course fee." onChange={handleDiscountChange} />
           <Input containerClassName="admission-final-fee" id="finalFee" label="Final Fee" value={finalFee} placeholder="0" readOnly hint="Total course fee minus discount." />
@@ -398,30 +569,108 @@ export function AdmissionForm() {
           <Textarea containerClassName="admission-form__full" id="remarks" name="remarks" label="Remarks" rows={3} placeholder="Add any relevant notes for staff" value={formData.remarks} onChange={handleInputChange} />
         </FormSection>
 
-        <div className="admission-form__actions">
+        {mode === 'create' && <div className="admission-form__actions">
           <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Registering Student...' : 'Register Student'}</Button>
           <Button type="button" variant="secondary" onClick={handleReset}>
             <RotateCcw aria-hidden="true" size={16} />
             Reset Form
           </Button>
           <p>Student details are saved securely through the LSA Admin API.</p>
-        </div>
-        {submitError && <p className="receipt-actions__error" role="alert">{submitError}</p>}
+        </div>}
+        {mode === 'create' && submitError && <p className="receipt-actions__error" role="alert">{submitError}</p>}
       </form>
+  )
 
+  if (mode === 'convert') {
+    const studentId = conversionResult?.data?.studentId || conversionResult?.data?.admissionId || ''
+    const hasIndexWarning = Boolean(conversionResult?.partial || conversionResult?.indexWarning || conversionResult?.studentIndexWarning || conversionResult?.studentIndexSynchronized === false)
+    return (
+      <Modal
+        open
+        title={conversionState === 'success' ? 'Admission Created' : 'Convert Enquiry to Admission'}
+        description={conversionState === 'success'
+          ? `Enquiry ${enquiry?.enquiryId ?? ''} has been successfully converted.`
+          : 'Complete the existing admission form. Enquiry information has been pre-filled where available.'}
+        onClose={() => { if (!isSubmitting) onClose?.() }}
+        footer={conversionState === 'success' ? (
+          <div className="admission-confirmation-actions">
+            <Button variant="secondary" onClick={() => onClose?.()}>Close</Button>
+            <Button variant="secondary" onClick={printConfirmation} disabled={!confirmationData}>Print</Button>
+            <Button variant="secondary" onClick={() => onViewStudent ? onViewStudent(studentId) : navigate('/students', { state: { selectedStudentId: studentId } })}><ArrowRight aria-hidden="true" size={16} />View Student</Button>
+            <Button onClick={() => void downloadConfirmationPdf()} disabled={!confirmationData || isDownloadingPdf}>
+              {isDownloadingPdf ? 'Preparing PDF...' : 'Download Admission PDF'}
+            </Button>
+          </div>
+        ) : conversionState === 'ambiguous' ? (
+          <Button variant="secondary" onClick={() => onClose?.()}>Close</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={() => onClose?.()} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" form="conversion-admission-form" disabled={isSubmitting || isLoadingCourses || Boolean(courseLoadMessage)}>
+              {conversionState === 'submitting' ? 'Creating Admission...' : 'Complete Admission'}
+            </Button>
+          </>
+        )}
+      >
+        {conversionState === 'success' ? (
+          <div className="admission-confirmation-success" role="status">
+            <div className="admission-confirmation-success__id">
+              <CheckCircle2 aria-hidden="true" size={24} />
+              <div><span>Student / Admission ID</span><strong>{studentId}</strong></div>
+            </div>
+            {confirmationData
+              ? <AdmissionConfirmationDocument data={confirmationData} ref={confirmationDocumentRef} />
+              : <p className="admission-confirmation-load-error">{confirmationLoadError || 'Loading the created Admission details...'}</p>}
+            {hasIndexWarning && <p className="admission-conversion-message" role="alert">{conversionResult?.indexWarning || conversionResult?.studentIndexWarning || conversionResult?.error || 'The admission was created, but an index needs attention.'}</p>}
+            {pdfError && <p className="admission-confirmation-action-error" role="alert">{pdfError}</p>}
+            {printError && <p className="admission-confirmation-action-error" role="alert">{printError}</p>}
+          </div>
+        ) : (
+          <>
+            {enquiry && <section className="enquiry-conversion-summary">
+              <h3>Enquiry Information</h3>
+              <dl>
+                <div><dt>Enquiry ID</dt><dd>{enquiry.enquiryId}</dd></div>
+                <div><dt>Name</dt><dd>{enquiry.fullName}</dd></div>
+                <div><dt>Mobile</dt><dd>{enquiry.mobileNumber}</dd></div>
+                <div><dt>Education Level</dt><dd>{enquiry.educationLevel || enquiry.degreeCourse || 'Not provided'}</dd></div>
+                <div><dt>Specialization</dt><dd>{enquiry.specialization || 'Not provided'}</dd></div>
+                <div><dt>Course Interested In</dt><dd>{enquiry.courseInterestedIn}</dd></div>
+                {enquiry.otherProgramDetails && <div><dt>Other Program Details</dt><dd>{enquiry.otherProgramDetails}</dd></div>}
+              </dl>
+            </section>}
+            {conversionState === 'ambiguous' && <div className="admission-conversion-message admission-conversion-message--ambiguous" role="alert">
+              <AlertTriangle aria-hidden="true" size={18} />
+              <div><strong>Conversion status could not be confirmed.</strong><p>Do not submit again until the enquiry and admission records have been checked.</p></div>
+            </div>}
+            {conversionState === 'definitive-error' && <div className="admission-conversion-message" role="alert"><strong>Unable to create admission.</strong> {conversionError}</div>}
+            {admissionFields}
+          </>
+        )}
+      </Modal>
+    )
+  }
+
+  return (
+    <>
+      {admissionFields}
       <Modal
         open={Boolean(preview)}
         onClose={() => setPreview(null)}
         title="Student registered successfully"
         description="The admission is ready to continue to its first fee payment."
         footer={
-          <>
+          <div className="admission-confirmation-actions">
             <Button variant="secondary" onClick={finishLater}>Finish Later</Button>
+            <Button variant="secondary" onClick={() => setIsAdmissionDocumentOpen(true)} disabled={!confirmationData}>
+              <FileBadge2 aria-hidden="true" size={16} />
+              View Admission Document
+            </Button>
             <Button onClick={continueToPayment}>
               Continue to Fee Payment
               <ArrowRight aria-hidden="true" size={16} />
             </Button>
-          </>
+          </div>
         }
       >
         {preview && (
@@ -439,9 +688,17 @@ export function AdmissionForm() {
               <div><dt>End time</dt><dd>{formatTime(preview.endTime)}</dd></div>
               <div><dt>Final course fee</dt><dd>{currencyFormatter.format(preview.finalFee)}</dd></div>
             </dl>
+            {confirmationLoadError && <p className="admission-confirmation-load-error" role="alert">{confirmationLoadError}</p>}
           </div>
         )}
       </Modal>
+      {confirmationData && (
+        <AdmissionConfirmationDocumentModal
+          data={confirmationData}
+          open={isAdmissionDocumentOpen}
+          onClose={() => setIsAdmissionDocumentOpen(false)}
+        />
+      )}
     </>
   )
 }

@@ -13,6 +13,7 @@ export const initialAdmissionForm: AdmissionFormData = {
   collegeName: '',
   course: '',
   courseDuration: '',
+  otherProgramDetails: '',
   dateOfBirth: '',
   degreeCourse: '',
   discount: '',
@@ -88,6 +89,9 @@ export function validateAdmissionForm(data: AdmissionFormData) {
     errors.pincode = 'Enter a valid 6 digit pincode.'
   }
   if (!data.course) errors.course = 'Select a course.'
+  if (data.course.trim().toLowerCase() === 'other programs' && !data.otherProgramDetails.trim()) {
+    errors.otherProgramDetails = 'Program / Training Interested In is required.'
+  }
   if (!data.courseDuration) errors.courseDuration = 'Select the course duration.'
   if (!/^\d{2}$/.test(data.batchNumber)) {
     errors.batchNumber = 'Enter a two-digit batch number, such as 01.'

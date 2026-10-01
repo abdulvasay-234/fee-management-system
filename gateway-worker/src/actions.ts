@@ -4,6 +4,7 @@ export const GET_ACTIONS = new Set([
   'student',
   'payments',
   'dashboard',
+  'enquiries',
   'walkins',
   'followups',
 ])
@@ -14,6 +15,9 @@ export const POST_ACTIONS = new Set([
   'delete-course',
   'add-student',
   'add-payment',
+  'add-enquiry',
+  'update-enquiry',
+  'convert-enquiry',
   'add-walkin',
   'update-walkin',
   'mark-walkin-exit',

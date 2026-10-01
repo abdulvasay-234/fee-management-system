@@ -6,6 +6,7 @@ export interface AdmissionFormData {
   collegeName: string
   course: string
   courseDuration: string
+  otherProgramDetails: string
   dateOfBirth: string
   degreeCourse: string
   discount: string

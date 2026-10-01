@@ -13,6 +13,13 @@ export class ApiHttpError extends Error {
   }
 }
 
+export class ApiOutcomeUnknownError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ApiOutcomeUnknownError'
+  }
+}
+
 export interface ApiError {
   message: string
 }
@@ -25,6 +32,7 @@ export interface CourseCode {
 }
 
 export interface AdmissionPayload {
+  idempotencyKey?: string
   fullName: string
   fathersName: string
   mothersName: string
@@ -48,6 +56,7 @@ export interface AdmissionPayload {
   discount: number
   remarks: string
   yearOfPassing: string
+  otherProgramDetails?: string
 }
 
 export interface AdmissionResponse {
@@ -68,6 +77,7 @@ export interface AdmissionResponse {
 }
 
 export interface PaymentPayload {
+  idempotencyKey?: string
   studentId: string
   course: string
   amountPaid: number
@@ -93,6 +103,11 @@ export interface PaymentResponse {
 export interface StudentRecord {
   studentId: string
   fullName: string
+  collegeName?: string
+  degreeCourse?: string
+  yearOfPassing?: string
+  educationLevel?: string
+  specialization?: string
   fatherName: string
   motherName: string
   dateOfBirth: string
@@ -117,6 +132,7 @@ export interface StudentRecord {
   totalPaid?: number
   balance?: number
   remarks: string
+  otherProgramDetails?: string
   createdAt: string
 }
 
@@ -187,6 +203,48 @@ export interface VisitorRecord {
   updatedAt: string
 }
 
+export interface EnquiryRecord {
+  enquiryId: string
+  fullName: string
+  mobileNumber: string
+  email: string
+  college: string
+  educationLevel: string
+  specialization: string
+  yearOfGraduation: string
+  courseInterestedIn: string
+  otherProgramDetails: string
+  referral: string
+  notes: string
+  consultedBy: string
+  enquiryDate: string
+  status: 'New' | 'Follow-up' | 'Converted' | 'Not Interested'
+  admissionId: string
+  createdAt: string
+  updatedAt: string
+  degreeCourse?: string
+}
+
+export interface ConvertEnquiryPayload {
+  enquiryId: string
+  admission: AdmissionPayload
+}
+
+export interface ConvertEnquiryResponse {
+  success: true
+  data?: { enquiryId: string; admissionId: string; studentId: string }
+  partial?: boolean
+  studentIndexSynchronized?: boolean
+  indexWarning?: string
+  studentIndexWarning?: string
+  error?: string
+}
+
+export type EnquiryPayload = Pick<EnquiryRecord,
+  'fullName' | 'mobileNumber' | 'email' | 'college' | 'educationLevel' | 'specialization' |
+  'yearOfGraduation' | 'courseInterestedIn' | 'otherProgramDetails' | 'referral' | 'notes' | 'consultedBy' | 'enquiryDate'
+>
+
 export interface FollowUpRecord {
   followUpId: string
   visitorId: string
@@ -205,6 +263,7 @@ export interface FollowUpRecord {
 }
 
 export interface WalkInPayload {
+  idempotencyKey?: string
   fullName: string
   mobileNumber: string
   email: string
@@ -221,6 +280,7 @@ export interface WalkInPayload {
 }
 
 export interface FollowUpPayload {
+  idempotencyKey?: string
   visitorId: string
   scheduledDate: string
   followUpStatus: string
@@ -251,6 +311,7 @@ async function request<T>(
   init: RequestInit = {},
   credential = getIdToken(),
   notifyFailure = true,
+  outcomeMayBeUnknown = false,
 ): Promise<T> {
   if (!credential) throw new ApiHttpError('Authentication required.', 401)
   const controller = new AbortController()
@@ -268,7 +329,12 @@ async function request<T>(
       if (notifyFailure) notifyAuthFailure('accessDenied', credential)
       throw new ApiHttpError('Your Google account is not authorized to access this application.', 403)
     }
-    if (!response.ok) throw new Error('The LSA API could not complete the request.')
+    if (!response.ok) {
+      if (outcomeMayBeUnknown && response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+        throw new ApiHttpError('The conversion request was rejected. Review the admission details and try again.', response.status)
+      }
+      throw new Error('The LSA API could not complete the request.')
+    }
 
     const payload: unknown = await response.json()
     if (!payload || typeof payload !== 'object' || (payload as ApiSuccess).success !== true) {
@@ -277,7 +343,10 @@ async function request<T>(
     }
     return payload as T
   } catch (error) {
-    if (error instanceof ApiHttpError) throw error
+    if (error instanceof ApiHttpError || error instanceof ApiOutcomeUnknownError) throw error
+    if (outcomeMayBeUnknown) {
+      throw new ApiOutcomeUnknownError('The conversion response was not confirmed. Its outcome may be unknown. Do not submit again until the enquiry and admission records have been checked.')
+    }
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('The LSA API request timed out. Please try again.')
     }
@@ -291,11 +360,24 @@ export function validateCredential(credential: string) {
   return request<{ success: true; data: CourseCode[] }>('?action=course-codes', {}, credential, false)
 }
 
-function post<T>(payload: Record<string, unknown>) {
+function post<T>(payload: Record<string, unknown>, outcomeMayBeUnknown = false) {
   return request<T>('', {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload),
+  }, getIdToken(), true, outcomeMayBeUnknown)
+}
+
+const pendingMutationKeys = new Map<string, string>()
+
+function postIdempotent<T>(action: string, payload: object) {
+  const signature = `${action}:${JSON.stringify(payload)}`
+  const idempotencyKey = pendingMutationKeys.get(signature) ?? crypto.randomUUID()
+  pendingMutationKeys.set(signature, idempotencyKey)
+
+  return post<T>({ action, ...(payload as Record<string, unknown>), idempotencyKey }).then((result) => {
+    pendingMutationKeys.delete(signature)
+    return result
   })
 }
 
@@ -318,11 +400,11 @@ export function deleteCourseCode(code: string) {
 }
 
 export function createAdmission(payload: AdmissionPayload) {
-  return post<{ success: true } & AdmissionResponse>({ action: 'add-student', ...payload })
+  return postIdempotent<{ success: true } & AdmissionResponse>('add-student', payload)
 }
 
 export function createPayment(payload: PaymentPayload) {
-  return post<{ success: true } & PaymentResponse>({ action: 'add-payment', ...payload })
+  return postIdempotent<{ success: true } & PaymentResponse>('add-payment', payload)
 }
 
 function queryString(parameters: Record<string, string | undefined>) {
@@ -359,6 +441,24 @@ export async function fetchDashboard() {
   return result.data
 }
 
+export async function fetchEnquiries() {
+  const result = await request<{ success: true; data: EnquiryRecord[] }>('?action=enquiries')
+  if (!Array.isArray(result.data)) throw new Error('The LSA API returned invalid enquiries.')
+  return result.data
+}
+
+export function convertEnquiry(payload: ConvertEnquiryPayload) {
+  return post<ConvertEnquiryResponse>({ action: 'convert-enquiry', ...payload }, true)
+}
+
+export function createEnquiry(payload: EnquiryPayload) {
+  return postIdempotent<{ success: true; data: EnquiryRecord; indexWarning?: string }>('add-enquiry', payload)
+}
+
+export function updateEnquiry(enquiryId: string, payload: EnquiryPayload & { status: EnquiryRecord['status'] }) {
+  return post<{ success: true; data: EnquiryRecord; indexWarning?: string }>({ action: 'update-enquiry', enquiryId, ...payload })
+}
+
 export async function fetchWalkIns(filters: Record<string, string | undefined> = {}) {
   const query = queryString(filters)
   const result = await request<{ success: true; data: VisitorRecord[] }>(`?action=walkins${query ? `&${query}` : ''}`)
@@ -374,7 +474,7 @@ export async function fetchFollowUps(filters: Record<string, string | undefined>
 }
 
 export function createWalkIn(payload: WalkInPayload) {
-  return post<{ success: true; data: VisitorRecord }>({ action: 'add-walkin', ...payload })
+  return postIdempotent<{ success: true; data: VisitorRecord }>('add-walkin', payload)
 }
 
 export function updateWalkIn(visitorId: string, payload: WalkInPayload) {
@@ -386,7 +486,7 @@ export function markWalkInExit(visitorId: string) {
 }
 
 export function createFollowUp(payload: FollowUpPayload) {
-  return post<{ success: true; data: FollowUpRecord }>({ action: 'add-followup', ...payload })
+  return postIdempotent<{ success: true; data: FollowUpRecord }>('add-followup', payload)
 }
 
 export function updateFollowUp(followUpId: string, payload: Omit<FollowUpPayload, 'visitorId'>) {

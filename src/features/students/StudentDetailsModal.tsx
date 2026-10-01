@@ -1,7 +1,10 @@
-import { Banknote, ChevronRight, X } from 'lucide-react'
-import { useEffect } from 'react'
+import { Banknote, ChevronRight, FileBadge2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Table } from '../../components/ui'
+import { fetchStudent } from '../../services/api'
+import { createAdmissionConfirmationData, type AdmissionConfirmationData } from '../admissions/admissionConfirmation'
+import { AdmissionConfirmationDocumentModal } from '../admissions/AdmissionConfirmationDocumentModal'
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import type { Student } from './studentTypes'
 
@@ -53,6 +56,24 @@ export function StudentDetailsModal({
   student,
 }: StudentDetailsModalProps) {
   const navigate = useNavigate()
+  const [confirmationData, setConfirmationData] = useState<AdmissionConfirmationData | null>(null)
+  const [isAdmissionDocumentOpen, setIsAdmissionDocumentOpen] = useState(false)
+  const [isLoadingAdmissionDocument, setIsLoadingAdmissionDocument] = useState(false)
+  const [admissionDocumentError, setAdmissionDocumentError] = useState('')
+
+  async function viewAdmissionDocument() {
+    setIsLoadingAdmissionDocument(true)
+    setAdmissionDocumentError('')
+    try {
+      const result = await fetchStudent(student.studentId)
+      setConfirmationData(createAdmissionConfirmationData(result.student, ''))
+      setIsAdmissionDocumentOpen(true)
+    } catch {
+      setAdmissionDocumentError('Unable to load this Admission document. Please try again.')
+    } finally {
+      setIsLoadingAdmissionDocument(false)
+    }
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -64,6 +85,7 @@ export function StudentDetailsModal({
   }, [onClose])
 
   return (
+    <>
     <div className="student-detail-modal" role="presentation" onMouseDown={onClose}>
       <section
         className="student-detail-modal__dialog"
@@ -78,12 +100,19 @@ export function StudentDetailsModal({
             <h2 id="student-detail-title">{student.fullName}</h2>
             <p>{student.studentId} · {student.course}</p>
           </div>
-          <Button variant="secondary" iconOnly aria-label="Close student details" onClick={onClose}>
-            <X aria-hidden="true" size={18} />
-          </Button>
+          <div className="student-detail-modal__header-actions">
+            <Button variant="secondary" onClick={() => void viewAdmissionDocument()} disabled={isLoadingAdmissionDocument}>
+              <FileBadge2 aria-hidden="true" size={16} />
+              {isLoadingAdmissionDocument ? 'Loading Document...' : 'View Admission Document'}
+            </Button>
+            <Button variant="secondary" iconOnly aria-label="Close student details" onClick={onClose}>
+              <X aria-hidden="true" size={18} />
+            </Button>
+          </div>
         </header>
 
         <div className="student-detail-modal__body">
+          {admissionDocumentError && <p className="admission-confirmation-load-error" role="alert">{admissionDocumentError}</p>}
           <section className="student-fee-summary" aria-label="Fee summary">
             <div><span>Final Fee</span><strong>{currencyFormatter.format(student.finalFee)}</strong></div>
             <div><span>Paid</span><strong>{currencyFormatter.format(student.totalPaid)}</strong></div>
@@ -123,6 +152,7 @@ export function StudentDetailsModal({
               { label: 'Enrollment Year', value: student.enrollmentYear },
               { label: 'Admission Date', value: student.admissionDate },
               { label: 'Course Duration', value: student.courseDuration },
+              { label: 'Other Program Details', value: student.otherProgramDetails ?? '' },
             ]}
           />
 
@@ -189,5 +219,13 @@ export function StudentDetailsModal({
         </div>
       </section>
     </div>
+    {confirmationData && (
+      <AdmissionConfirmationDocumentModal
+        data={confirmationData}
+        open={isAdmissionDocumentOpen}
+        onClose={() => setIsAdmissionDocumentOpen(false)}
+      />
+    )}
+    </>
   )
 }

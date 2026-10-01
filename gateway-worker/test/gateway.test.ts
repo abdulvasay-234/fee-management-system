@@ -127,6 +127,52 @@ describe('Worker gateway routing and authorization', () => {
     }
   })
 
+  it('forwards Enquiries actions through the authenticated business route', async () => {
+    const cases = [
+      { method: 'GET', action: 'enquiries', path: '/api?action=enquiries', body: undefined, parameters: {} },
+      { method: 'POST', action: 'add-enquiry', path: '/api', body: { action: 'add-enquiry', fullName: 'Jane' }, parameters: { fullName: 'Jane' } },
+      { method: 'POST', action: 'update-enquiry', path: '/api', body: { action: 'update-enquiry', enquiryId: 'ENQ-000001' }, parameters: { enquiryId: 'ENQ-000001' } },
+      { method: 'POST', action: 'convert-enquiry', path: '/api', body: { action: 'convert-enquiry', enquiryId: 'ENQ-000001' }, parameters: { enquiryId: 'ENQ-000001' } },
+    ]
+    for (const { method, action, path, body, parameters } of cases) {
+      const { handle, verifyToken, forwardRequest } = setup()
+      const response = await handle(apiRequest(method, path, body), env)
+      expect(response.status).toBe(200)
+      expect(verifyToken).toHaveBeenCalledWith('valid-token', env.GOOGLE_CLIENT_ID)
+      expect(forwardRequest).toHaveBeenCalledWith(
+        { action, method, parameters },
+        approvedIdentity,
+        expect.any(Object),
+      )
+    }
+  })
+
+  it('rejects unauthenticated and unapproved Enquiries requests before forwarding', async () => {
+    const cases = [
+      apiRequest('GET', '/api?action=enquiries', undefined, ''),
+      apiRequest('POST', '/api', { action: 'add-enquiry' }, ''),
+      apiRequest('POST', '/api', { action: 'update-enquiry' }, ''),
+      apiRequest('POST', '/api', { action: 'convert-enquiry' }, ''),
+    ]
+    for (const request of cases) {
+      const { handle, forwardRequest } = setup()
+      const response = await handle(request, env)
+      expect(response.status).toBe(401)
+      expect(forwardRequest).not.toHaveBeenCalled()
+    }
+    for (const [method, path, body] of [
+      ['GET', '/api?action=enquiries', undefined],
+      ['POST', '/api', { action: 'add-enquiry' }],
+      ['POST', '/api', { action: 'update-enquiry' }],
+      ['POST', '/api', { action: 'convert-enquiry' }],
+    ] as const) {
+      const { handle, forwardRequest } = setup({ ...approvedIdentity, email: 'other@gmail.com' })
+      const response = await handle(apiRequest(method, path, body), env)
+      expect(response.status).toBe(403)
+      expect(forwardRequest).not.toHaveBeenCalled()
+    }
+  })
+
   it('rejects unsupported actions and GET rebuild', async () => {
     const { handle } = setup()
     expect((await handle(apiRequest('GET', '/api?action=debug'), env)).status).toBe(400)

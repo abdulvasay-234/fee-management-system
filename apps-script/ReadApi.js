@@ -105,6 +105,27 @@ function getStudentDetails_(parameters) {
   if (!studentId) throw new Error("Student ID is required.");
   const student = readIndexedStudents_({ studentId: studentId })[0];
   if (!student) throw new Error('Student ID "' + studentId + '" was not found.');
+  try {
+    const courseCode = studentId.substring(2, 4);
+    const courseInfo = getCourseCodes_().find(function(course) { return normalizeCourseCode_(course.code) === courseCode; });
+    if (courseInfo) {
+      const sourceSheet = findAdmissionSheetForCourse_(courseInfo.courseName).sheet;
+      const sourceRecord = findAdmissionByStudentId_(sourceSheet, studentId);
+      if (sourceRecord) {
+        const info = getAdmissionHeaderInfo_(sourceSheet);
+        const row = sourceSheet.getRange(sourceRecord.row, 1, 1, info.headers.length).getDisplayValues()[0];
+        const columns = {};
+        Object.keys(info.columns).forEach(function(header) { columns[header] = info.columns[header] - 1; });
+        const admission = mapAdmissionRow_(row, columns);
+        student.collegeName = admission.collegeName;
+        student.degreeCourse = admission.degreeCourse;
+        student.yearOfPassing = admission.yearOfPassing;
+        student.otherProgramDetails = admission.otherProgramDetails;
+      }
+    }
+  } catch (error) {
+    Logger.log("Admission source detail lookup failed for " + studentId + ": " + error.message);
+  }
   const payments = readIndexedPayments_({ studentId: studentId });
   const latestPayment = payments.slice().sort(function(left, right) {
     return comparePaymentChronology_(right, left);
@@ -120,6 +141,10 @@ function getStudentDetails_(parameters) {
 
 function getPayments_(filters) {
   return readIndexedPayments_(filters);
+}
+
+function getEnquiries_() {
+  return readIndexedEnquiries_();
 }
 
 function getWalkIns_(filters) {
@@ -140,6 +165,10 @@ function getFollowUps_(filters) {
 
 function readVisitorSourceRecords_() {
   return readSheetRecords_(getVisitorsSourceSheet_(), CONFIG.VISITOR_HEADERS, mapVisitorRow_);
+}
+
+function readEnquirySourceRecords_() {
+  return readSheetRecords_(getEnquiriesSourceSheet_(), CONFIG.ENQUIRY_HEADERS, mapEnquiryRow_);
 }
 
 function readFollowUpSourceRecords_() {
@@ -218,7 +247,7 @@ function getDashboardData_() {
 function readSheetRecords_(sheet, expectedHeaders, mapper) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  const values = sheet.getRange(1, 1, lastRow, expectedHeaders.length).getDisplayValues();
+  const values = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getDisplayValues();
   const headers = values[0].map(function(header) { return String(header).trim(); });
   const columns = {};
   headers.forEach(function(header, index) { columns[header] = index; });
@@ -241,7 +270,9 @@ function mapAdmissionRow_(row, columns) {
     batch: value("Batch"), startTime: value("Start Time"), endTime: value("End Time"), enrollmentMonth: value("Enrollment Month"),
     enrollmentYear: value("Enrollment Year"), admissionDate: value("Admission Date"), courseDuration: value("Course Duration"),
     totalCourseFee: totalCourseFee, discount: discount, finalFee: normalizeOptionalMoney_(value("Final Fee")) || 0,
-    remarks: value("Remarks"), createdAt: value("Created At")
+    remarks: value("Remarks"), createdAt: value("Created At"), yearOfPassing: value("Year of Passing"),
+    collegeName: value("College Name"), degreeCourse: value("Degree / Course"),
+    otherProgramDetails: value("Other Program Details")
   };
 }
 
@@ -265,6 +296,20 @@ function mapVisitorRow_(row, columns) {
     otherReferral: value("Other Referral"), notes: value("Notes / Remarks"), consultedWith: value("Consulted With"),
     visitDate: value("Visit Date"), entryTime: value("Entry Time"), exitTime: value("Exit Time"), visitStatus: value("Visit Status"),
     followUpRequired: value("Follow-up Required"), conversionStatus: value("Conversion Status"), admissionId: value("Admission ID"),
+    createdAt: value("Created At"), updatedAt: value("Updated At")
+  };
+}
+
+function mapEnquiryRow_(row, columns) {
+  const value = function(header) { return String(row[columns[header]] || "").trim(); };
+  const educationLevel = value("Education Level") || value("Degree / Course");
+  return {
+    enquiryId: value("Enquiry ID"), fullName: value("Full Name"), mobileNumber: value("Mobile Number"),
+    email: value("Email"), college: value("College"), educationLevel: educationLevel,
+    specialization: value("Specialization"), yearOfGraduation: value("Year of Graduation"), courseInterestedIn: value("Course Interested In"),
+    otherProgramDetails: value("Other Program Details"),
+    referral: value("Referral"), notes: value("Notes / Remarks"), consultedBy: value("Consulted By"),
+    enquiryDate: normalizeComparableDateOnly_(value("Enquiry Date")), status: value("Status"), admissionId: value("Admission ID"),
     createdAt: value("Created At"), updatedAt: value("Updated At")
   };
 }

@@ -25,6 +25,7 @@ export interface Student {
   totalPaid: number
   balance: number
   remarks: string
+  otherProgramDetails?: string
   createdAt: string
 }
 

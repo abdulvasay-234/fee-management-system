@@ -42,12 +42,18 @@ const CONFIG = {
   FOLLOW_UPS_INDEX_SHEET_ID:
     "1CVULH9rG73dvbAl4EQ89jNG-KaWkZ0e57sNdd4NXA5I",
 
+  ADMINISTRATIVE_FOLDER_ID: "1JjFl-ZHv1rtd5iB1wHxqg0WQlKenOyHG",
+  APP_DATA_FOLDER_ID: "1SvV5CIkn97kFzhCJlPe4jT_2rRoy5M58",
+  ENQUIRIES_SOURCE_PROPERTY: "ENQUIRIES_SOURCE_SHEET_ID",
+  ENQUIRIES_INDEX_PROPERTY: "ENQUIRIES_INDEX_SHEET_ID",
+
   ADMISSION_SHEET_IDS: {
     "python programming": "1rTp-0i6I-_K0QzLLwoZnOgsQ6qiBkeL9OKcO2EYin8U",
     "data science": "1JL202KADTPv5iGkYeiazeKtWDk_0hxlOiIuJgjBSuA0",
     "full stack java": "1gBqAdF3qyYf3s3p4iTL0zmic8AkT1KQmJsvpff6akN0",
     "devops": "1Ke6YqhBYHV2YJDOa5yn8sKRiXM3IIVHMC5nfZe0NEzw",
-    "cyber security": "1z3aYiMFnz9vGZDKin6w6qmyvdPu8oCJ5V2VhiWBe0tM"
+    "cyber security": "1z3aYiMFnz9vGZDKin6w6qmyvdPu8oCJ5V2VhiWBe0tM",
+    "other programs": "1EYEjrVTcb76ECdQ3yciXGlez8MHPck5lRV1aLYeAIgo"
   },
 
   PAYMENT_SHEET_IDS: {
@@ -78,7 +84,7 @@ const CONFIG = {
   ],
 
   STUDENTS_INDEX_HEADERS: [
-    "Student ID", "Full Name", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Mobile Number", "Email", "Address", "City", "State", "Pincode", "Course", "Batch", "Start Time", "End Time", "Enrollment Month", "Enrollment Year", "Admission Date", "Course Duration", "Total Course Fee", "Discount", "Final Fee", "Total Paid", "Balance", "Latest Payment Date", "Latest Receipt ID", "Payment Count", "Remarks", "Created At"
+    "Student ID", "Full Name", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Mobile Number", "Email", "Address", "City", "State", "Pincode", "Course", "Batch", "Start Time", "End Time", "Enrollment Month", "Enrollment Year", "Admission Date", "Course Duration", "Total Course Fee", "Discount", "Final Fee", "Total Paid", "Balance", "Latest Payment Date", "Latest Receipt ID", "Payment Count", "Remarks", "Created At", "Other Program Details"
   ],
 
   VISITOR_HEADERS: [
@@ -96,6 +102,15 @@ const CONFIG = {
     "Completed Date", "Follow-up Status", "Contact Method", "Notes",
     "Created By", "Created At", "Updated At"
   ],
+
+  ENQUIRY_HEADERS: [
+    "Enquiry ID", "Full Name", "Mobile Number", "Email", "College",
+    "Education Level", "Specialization", "Year of Graduation", "Course Interested In",
+    "Other Program Details", "Referral", "Notes / Remarks", "Consulted By",
+    "Enquiry Date", "Status", "Admission ID", "Created At", "Updated At"
+  ],
+
+  ENQUIRY_STATUSES: ["New", "Follow-up", "Converted", "Not Interested"],
 
   PAYMENT_MODES: ["Cash", "UPI", "Bank Transfer", "Card", "Other"],
   FEE_TYPES: ["Admission Fee", "Installment", "Full Payment", "Other"],
@@ -198,12 +213,67 @@ function getGatewayParameters_(body) {
   return parameters;
 }
 
+const IDEMPOTENCY_PROPERTY_PREFIX_ = "LSA_IDEMPOTENCY_";
+const IDEMPOTENCY_RETENTION_MS_ = 7 * 24 * 60 * 60 * 1000;
+
+function getIdempotencyContext_(action, payload) {
+  const key = String(payload.idempotencyKey || "").trim();
+  if (!key) return null;
+  if (!/^[A-Za-z0-9._:-]{8,200}$/.test(key)) throw new Error("Invalid idempotency key.");
+  const fingerprint = Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(payload))
+  );
+  return { action: action, key: key, fingerprint: fingerprint };
+}
+
+function getIdempotencyResult_(context) {
+  if (!context) return { found: false };
+  const properties = PropertiesService.getScriptProperties();
+  const raw = properties.getProperty(IDEMPOTENCY_PROPERTY_PREFIX_ + context.key);
+  if (!raw) return { found: false };
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch (error) {
+    properties.deleteProperty(IDEMPOTENCY_PROPERTY_PREFIX_ + context.key);
+    return { found: false };
+  }
+  if (record.action !== context.action || record.fingerprint !== context.fingerprint) {
+    throw new Error("Idempotency key was reused with different request data.");
+  }
+  return { found: true, response: record.response };
+}
+
+function rememberIdempotentResult_(context, response) {
+  if (!context) return response;
+  const properties = PropertiesService.getScriptProperties();
+  const now = Date.now();
+  const allProperties = properties.getProperties();
+  Object.keys(allProperties).forEach(function(name) {
+    if (name.indexOf(IDEMPOTENCY_PROPERTY_PREFIX_) !== 0) return;
+    try {
+      const record = JSON.parse(allProperties[name]);
+      if (!record.createdAt || now - record.createdAt > IDEMPOTENCY_RETENTION_MS_) properties.deleteProperty(name);
+    } catch (error) {
+      properties.deleteProperty(name);
+    }
+  });
+  properties.setProperty(IDEMPOTENCY_PROPERTY_PREFIX_ + context.key, JSON.stringify({
+    action: context.action,
+    fingerprint: context.fingerprint,
+    createdAt: now,
+    response: response
+  }));
+  return response;
+}
+
 function dispatchGatewayAction_(action, parameters, identity) {
   if (action === "course-codes") return { success: true, data: getCourseCodes_() };
   if (action === "students") return { success: true, data: getStudents_(parameters) };
   if (action === "student") return { success: true, data: getStudentDetails_(parameters) };
   if (action === "payments") return { success: true, data: getPayments_(parameters) };
   if (action === "dashboard") return { success: true, data: getDashboardData_() };
+  if (action === "enquiries") return { success: true, data: getEnquiries_() };
   if (action === "walkins") return { success: true, data: getWalkIns_(parameters) };
   if (action === "followups") return { success: true, data: getFollowUps_(parameters) };
   if (action === "rebuild-indexes") {
@@ -215,6 +285,9 @@ function dispatchGatewayAction_(action, parameters, identity) {
   if (action === "delete-course") return deleteCourseCode_(parameters);
   if (action === "add-student") return addStudent_(parameters);
   if (action === "add-payment") return addPayment_(parameters);
+  if (action === "add-enquiry") return addEnquiry_(parameters);
+  if (action === "update-enquiry") return updateEnquiry_(parameters);
+  if (action === "convert-enquiry") return convertEnquiry_(parameters);
   if (action === "add-walkin") return addWalkIn_(parameters);
   if (action === "update-walkin") return updateWalkIn_(parameters);
   if (action === "mark-walkin-exit") return markWalkInExit_(parameters);
@@ -1761,14 +1834,17 @@ function jsonResponse_(data) {
  * SS = student sequence
  */
 
-function addStudent_(payload) {
+function addStudent_(payload, conversion) {
 
   const lock =
-    LockService.getScriptLock();
+    conversion ? null : LockService.getScriptLock();
 
-  lock.waitLock(15000);
+  if (lock) lock.waitLock(15000);
 
   try {
+    const idempotency = getIdempotencyContext_("add-student", payload);
+    const previousResult = getIdempotencyResult_(idempotency);
+    if (previousResult.found) return previousResult.response;
 
     // ========================================================
     // READ INPUT
@@ -1875,9 +1951,10 @@ function addStudent_(payload) {
       );
 
     const remarks =
-      String(
-        payload.remarks || ""
-      ).trim();
+      conversion ? String(payload.remarks ?? "") : String(payload.remarks || "").trim();
+
+    const otherProgramDetails =
+      String(payload.otherProgramDetails || "").trim();
 
     const yearOfPassing =
       String(
@@ -2081,7 +2158,7 @@ function addStudent_(payload) {
         courseInfo.code
       );
 
-    if (courseCode === "00") {
+    if (courseCode === "00" && !conversion) {
 
       throw new Error(
         "Other Programs are payment and receipt only; regular admissions are not supported."
@@ -2106,6 +2183,14 @@ function addStudent_(payload) {
         '" is inactive and cannot receive new admissions.'
       );
 
+    }
+
+    if (courseCode === "00" && !otherProgramDetails) {
+      throw new Error("Other Program Details are required for Other Programs.");
+    }
+
+    if (courseCode !== "00" && otherProgramDetails) {
+      throw new Error("Other Program Details are only valid for Other Programs.");
     }
 
 
@@ -2223,8 +2308,19 @@ function addStudent_(payload) {
 
     const headerInfo =
       getAdmissionHeaderInfo_(
-        sheet
+        sheet,
+        Boolean(conversion)
       );
+
+    if (conversion) {
+      ["Enquiry ID", "Conversion Fingerprint"].forEach(function(header) {
+        if (headerInfo.columns[header]) return;
+        const column = headerInfo.headers.length + 1;
+        sheet.getRange(1, column).setValue(header);
+        headerInfo.headers.push(header);
+        headerInfo.columns[header] = column;
+      });
+    }
 
 
     // ========================================================
@@ -2317,10 +2413,18 @@ function addStudent_(payload) {
             collegeName,
 
           degreeCourse:
-            degreeCourse
+            degreeCourse,
+
+          otherProgramDetails:
+            otherProgramDetails,
+          enquiryId:
+            conversion ? payload.enquiryId : "",
+          conversionFingerprint:
+            conversion ? payload.conversionFingerprint : ""
         }
       );
 
+    if (conversion) conversion.reserve(studentId, sheet);
 
     // ========================================================
     // WRITE STUDENT
@@ -2343,6 +2447,8 @@ function addStudent_(payload) {
       .setValues([
         rowValues
       ]);
+
+    if (conversion) conversion.recordAdmission(studentId, sheet);
 
 
     // ========================================================
@@ -2479,12 +2585,12 @@ function addStudent_(payload) {
 
     if (indexWarning) response.indexWarning = indexWarning;
 
-    return response;
+    return rememberIdempotentResult_(idempotency, response);
 
 
   } finally {
 
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
 
   }
 
@@ -2859,7 +2965,8 @@ function getNextStudentSequenceFromValues_(
 // ============================================================
 
 function getAdmissionHeaderInfo_(
-  sheet
+  sheet,
+  includeConversionFields
 ) {
 
   const lastColumn =
@@ -2894,21 +3001,18 @@ function getAdmissionHeaderInfo_(
         }
       );
 
-  const educationHeaderStart =
+  const legacyEducationHeaderCount =
     CONFIG.ADMISSION_HEADERS.length - 3;
 
   if (
-    headers.length >= educationHeaderStart &&
+    headers.length >= legacyEducationHeaderCount &&
     headers.length < CONFIG.ADMISSION_HEADERS.length &&
     headers.every(function(header, index) {
       return header === CONFIG.ADMISSION_HEADERS[index];
     })
   ) {
 
-    const missingHeaders =
-      CONFIG.ADMISSION_HEADERS.slice(
-        headers.length
-      );
+    const missingHeaders = CONFIG.ADMISSION_HEADERS.slice(headers.length);
 
     sheet
       .getRange(
@@ -2926,6 +3030,11 @@ function getAdmissionHeaderInfo_(
       missingHeaders
     );
 
+  }
+
+  if (includeConversionFields && headers.indexOf("Other Program Details") === -1) {
+    sheet.getRange(1, headers.length + 1).setValue("Other Program Details");
+    headers.push("Other Program Details");
   }
 
 
@@ -3080,6 +3189,15 @@ function buildAdmissionRow_(
 
         case "Degree / Course":
           return student.degreeCourse;
+
+        case "Other Program Details":
+          return safeSheetValue_(student.otherProgramDetails || "");
+
+        case "Enquiry ID":
+          return student.enquiryId;
+
+        case "Conversion Fingerprint":
+          return student.conversionFingerprint;
 
         default:
           return "";
@@ -3390,10 +3508,15 @@ function safeSheetValue_(value) {
 
 function appendStructuredRecord_(sheet, headers, rowValues, textHeaders) {
   const info = getStructuredSheetInfo_(sheet, headers, "Source");
+  const valuesByHeader = {};
+  headers.forEach(function(header, index) { valuesByHeader[header] = rowValues[index]; });
+  const alignedValues = info.headers.map(function(header) {
+    return Object.prototype.hasOwnProperty.call(valuesByHeader, header) ? valuesByHeader[header] : "";
+  });
   const nextRow = Math.max(sheet.getLastRow() + 1, 2);
-  sheet.getRange(nextRow, 1, 1, info.headers.length).setValues([rowValues]);
+  sheet.getRange(nextRow, 1, 1, info.headers.length).setValues([alignedValues]);
   (textHeaders || []).forEach(function(header) {
-    sheet.getRange(nextRow, info.columns[header]).setNumberFormat("@").setValue(rowValues[info.columns[header] - 1]);
+    sheet.getRange(nextRow, info.columns[header]).setNumberFormat("@").setValue(valuesByHeader[header]);
   });
   return nextRow;
 }
@@ -3402,19 +3525,31 @@ function findStructuredRecord_(sheet, headers, keyHeader, keyValue, mapper) {
   const info = getStructuredSheetInfo_(sheet, headers, "Source");
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return null;
-  const values = sheet.getRange(2, 1, lastRow - 1, info.headers.length).getDisplayValues();
   const zeroBasedColumns = {};
   Object.keys(info.columns).forEach(function(header) { zeroBasedColumns[header] = info.columns[header] - 1; });
-  for (let index = 0; index < values.length; index++) {
-    if (String(values[index][zeroBasedColumns[keyHeader]] || "").trim() === keyValue) {
-      return { row: index + 2, record: mapper(values[index], zeroBasedColumns), info: info };
+  const keyValues = sheet.getRange(2, info.columns[keyHeader], lastRow - 1, 1).getDisplayValues();
+  for (let index = 0; index < keyValues.length; index++) {
+    if (String(keyValues[index][0] || "").trim() === keyValue) {
+      const row = sheet.getRange(index + 2, 1, 1, info.headers.length).getDisplayValues()[0];
+      return { row: index + 2, record: mapper(row, zeroBasedColumns), info: info };
     }
   }
   return null;
 }
 
-function updateStructuredRecord_(sheet, row, values) {
-  sheet.getRange(row, 1, 1, values.length).setValues([values]);
+function updateStructuredRecord_(sheet, row, values, expectedHeaders) {
+  if (!expectedHeaders) {
+    sheet.getRange(row, 1, 1, values.length).setValues([values]);
+    return;
+  }
+  const info = getStructuredSheetInfo_(sheet, expectedHeaders, "Source");
+  const existing = sheet.getRange(row, 1, 1, info.headers.length).getValues()[0];
+  const valuesByHeader = {};
+  expectedHeaders.forEach(function(header, index) { valuesByHeader[header] = values[index]; });
+  const alignedValues = info.headers.map(function(header, index) {
+    return Object.prototype.hasOwnProperty.call(valuesByHeader, header) ? valuesByHeader[header] : existing[index];
+  });
+  sheet.getRange(row, 1, 1, info.headers.length).setValues([alignedValues]);
 }
 
 function getNextAnnualId_(sheet, headers, idHeader, prefix, date) {
@@ -3481,12 +3616,307 @@ function visitorFromPayload_(payload, existing) {
   return validateVisitorRecord_(visitor);
 }
 
+function enquiryFromPayload_(payload, existing) {
+  const enquiry = existing ? Object.assign({}, existing) : {};
+  const fields = ["fullName", "mobileNumber", "email", "college", "educationLevel", "specialization", "yearOfGraduation", "courseInterestedIn", "otherProgramDetails", "referral", "notes", "consultedBy", "enquiryDate"];
+  fields.forEach(function(field) {
+    if (!existing || Object.prototype.hasOwnProperty.call(payload, field)) enquiry[field] = String(payload[field] || "").trim();
+  });
+  if (Object.prototype.hasOwnProperty.call(payload, "degreeCourse") && !Object.prototype.hasOwnProperty.call(payload, "educationLevel")) {
+    enquiry.educationLevel = String(payload.degreeCourse || "").trim();
+  }
+  if (!enquiry.fullName) throw new Error("Full Name is required.");
+  if (!enquiry.mobileNumber) throw new Error("Mobile Number is required.");
+  if (!enquiry.educationLevel) throw new Error("Education Level is required.");
+  if (!enquiry.courseInterestedIn) throw new Error("Course Interested In is required.");
+  enquiry.courseInterestedIn = normalizeInterestedCourse_(enquiry.courseInterestedIn);
+  if (normalizeCourseName_(enquiry.courseInterestedIn) === "other programs" && !enquiry.otherProgramDetails) {
+    throw new Error("Other Program Details are required for Other Programs.");
+  }
+  if (normalizeCourseName_(enquiry.courseInterestedIn) !== "other programs") enquiry.otherProgramDetails = "";
+  if (!enquiry.enquiryDate || !/^\d{4}-\d{2}-\d{2}$/.test(enquiry.enquiryDate) || !parseDateOnly_(enquiry.enquiryDate)) {
+    throw new Error("Enquiry Date must be a valid YYYY-MM-DD date.");
+  }
+  validateEmail_(enquiry.email);
+  enquiry.status = requireAllowedOption_(Object.prototype.hasOwnProperty.call(payload, "status") ? payload.status : (existing ? existing.status : "New"), CONFIG.ENQUIRY_STATUSES, "Status");
+  if (String(payload.admissionId || "").trim()) throw new Error("Admission ID cannot be set before admission conversion.");
+  return enquiry;
+}
+
+function getNextEnquiryId_(sheet) {
+  const info = getStructuredSheetInfo_(sheet, CONFIG.ENQUIRY_HEADERS, "Enquiries source");
+  const lastRow = sheet.getLastRow();
+  let highest = 0;
+  if (lastRow >= 2) {
+    sheet.getRange(2, info.columns["Enquiry ID"], lastRow - 1, 1).getDisplayValues().forEach(function(row) {
+      const match = /^ENQ-(\d+)$/.exec(String(row[0] || "").trim());
+      if (match) highest = Math.max(highest, Number(match[1]));
+    });
+  }
+  return "ENQ-" + String(highest + 1).padStart(6, "0");
+}
+
+function addEnquiry_(payload) {
+  const enquiry = enquiryFromPayload_(payload, null);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const idempotency = getIdempotencyContext_("add-enquiry", payload);
+    const previousResult = getIdempotencyResult_(idempotency);
+    if (previousResult.found) return previousResult.response;
+    const sheet = getEnquiriesSourceSheet_();
+    const now = new Date();
+    enquiry.enquiryId = getNextEnquiryId_(sheet);
+    enquiry.admissionId = "";
+    enquiry.createdAt = now;
+    enquiry.updatedAt = now;
+    appendStructuredRecord_(sheet, CONFIG.ENQUIRY_HEADERS, buildEnquiryRow_(enquiry), ["Enquiry ID", "Mobile Number"]);
+    let indexWarning = "";
+    try { synchronizeEnquiryIndex_(enquiry); } catch (error) {
+      Logger.log("Enquiries Index synchronization failed: " + error.message);
+      indexWarning = "Enquiry source was saved, but Enquiries Index synchronization failed. Rebuild the indexes.";
+    }
+    const response = { success: true, data: enquiry };
+    if (indexWarning) response.indexWarning = indexWarning;
+    return rememberIdempotentResult_(idempotency, response);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function updateEnquiry_(payload) {
+  const enquiryId = String(payload.enquiryId || "").trim();
+  if (!/^ENQ-\d+$/.test(enquiryId)) throw new Error("A valid Enquiry ID is required.");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let enquiry;
+  let indexWarning = "";
+  try {
+    const sheet = getEnquiriesSourceSheet_();
+    const found = findStructuredRecord_(sheet, CONFIG.ENQUIRY_HEADERS, "Enquiry ID", enquiryId, mapEnquiryRow_);
+    if (!found) throw new Error('Enquiry ID "' + enquiryId + '" was not found.');
+    enquiry = enquiryFromPayload_(payload, found.record);
+    enquiry.enquiryId = found.record.enquiryId;
+    enquiry.admissionId = found.record.admissionId;
+    enquiry.createdAt = sheet.getRange(found.row, found.info.columns["Created At"]).getValue();
+    enquiry.updatedAt = new Date();
+    updateStructuredRecord_(sheet, found.row, buildEnquiryRow_(enquiry), CONFIG.ENQUIRY_HEADERS);
+    try { synchronizeEnquiryIndex_(enquiry); } catch (error) {
+      Logger.log("Enquiries Index synchronization failed: " + error.message);
+      indexWarning = "Enquiry source was updated, but Enquiries Index synchronization failed. Rebuild the indexes.";
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  const response = { success: true, data: enquiry };
+  if (indexWarning) response.indexWarning = indexWarning;
+  return response;
+}
+
+const ENQUIRY_CONVERSION_PREFIX_ = "LSA_ENQUIRY_CONVERSION_";
+
+function findEnquiryAdmission_(sheet, enquiry, reservation) {
+  const info = getAdmissionHeaderInfo_(sheet);
+  const lastRow = sheet.getLastRow();
+  let matchingRow = 0;
+  if (lastRow >= 2 && info.columns["Enquiry ID"] && info.columns["Conversion Fingerprint"]) {
+    sheet.getRange(2, info.columns["Enquiry ID"], lastRow - 1, 1).getDisplayValues().forEach(function(row, index) {
+      if (String(row[0] || "").trim() !== enquiry.enquiryId) return;
+      if (matchingRow) throw new Error("Multiple admissions reference this Enquiry ID.");
+      matchingRow = index + 2;
+    });
+  }
+  if (matchingRow) {
+    const row = sheet.getRange(matchingRow, 1, 1, info.headers.length).getDisplayValues()[0];
+    const studentId = String(row[info.columns["Student ID"] - 1] || "").trim();
+    const fingerprint = String(row[info.columns["Conversion Fingerprint"] - 1] || "").trim();
+    if (!studentId || !fingerprint || (reservation && (studentId !== reservation.studentId || fingerprint !== reservation.fingerprint))) {
+      throw new Error("Reserved admission does not match its source row.");
+    }
+    if (enquiry.admissionId && studentId !== enquiry.admissionId) throw new Error("Linked admission does not match this enquiry.");
+    if (!enquiry.admissionId && !reservation && (normalizeText_(row[info.columns["Full Name"] - 1]) !== normalizeText_(enquiry.fullName) ||
+        String(row[info.columns["Mobile Number"] - 1] || "").trim() !== enquiry.mobileNumber ||
+        normalizeCourseName_(row[info.columns.Course - 1]) !== normalizeCourseName_(enquiry.courseInterestedIn))) {
+      throw new Error("Admission association does not match this enquiry.");
+    }
+    return { studentId: studentId, row: matchingRow, fingerprint: fingerprint };
+  }
+  if (reservation && findAdmissionByStudentId_(sheet, reservation.studentId)) {
+    throw new Error("Reserved admission exists without its Enquiry ID association.");
+  }
+  return null;
+}
+
+function synchronizeConversionStudentIndex_(sheet, admissionRow) {
+  const info = getAdmissionHeaderInfo_(sheet);
+  const row = sheet.getRange(admissionRow, 1, 1, info.headers.length).getDisplayValues()[0];
+  const columns = {};
+  Object.keys(info.columns).forEach(function(header) { columns[header] = info.columns[header] - 1; });
+  const student = mapAdmissionRow_(row, columns);
+  student.createdAt = sheet.getRange(admissionRow, info.columns["Created At"]).getValue();
+  const payments = readIndexedPayments_({ studentId: student.studentId });
+  synchronizeStudentIndex_(enrichStudentsWithPayments_([student], payments)[0]);
+}
+
+function linkEnquiryAdmission_(sheet, found, studentId) {
+  const columns = found.info.columns;
+  const row = sheet.getRange(found.row, 1, 1, found.info.headers.length).getValues()[0];
+  const existingId = String(row[columns["Admission ID"] - 1] || "").trim();
+  if (existingId && existingId !== studentId) throw new Error("Enquiry is linked to another admission.");
+  if (row[columns.Status - 1] !== "Converted" || !existingId) {
+    row[columns.Status - 1] = "Converted";
+    row[columns["Admission ID"] - 1] = studentId;
+    row[columns["Updated At"] - 1] = new Date();
+    sheet.getRange(found.row, 1, 1, row.length).setValues([row]);
+  }
+  const enquiry = Object.assign({}, found.record, {
+    status: "Converted", admissionId: studentId,
+    createdAt: row[columns["Created At"] - 1], updatedAt: row[columns["Updated At"] - 1]
+  });
+  const response = { success: true, data: { enquiryId: enquiry.enquiryId, admissionId: studentId, studentId: studentId } };
+  try { synchronizeEnquiryIndex_(enquiry); } catch (error) {
+    Logger.log("Enquiries Index synchronization failed: " + error.message);
+    response.indexWarning = "Admission linked in the Enquiries source, but Enquiries Index synchronization failed. Rebuild the indexes.";
+  }
+  return response;
+}
+
+function getEnquiryConversionReservation_(properties, propertyKey, enquiryId) {
+  const stored = properties.getProperty(propertyKey);
+  if (!stored) return null;
+  let reservation;
+  try { reservation = JSON.parse(stored); } catch (error) { throw new Error("Enquiry conversion reservation is invalid."); }
+  if (!reservation || typeof reservation !== "object" || Array.isArray(reservation)) {
+    throw new Error("Enquiry conversion reservation is invalid.");
+  }
+  if (reservation.enquiryId !== enquiryId || !/^\d{8}$/.test(reservation.studentId) ||
+      !reservation.sheetId || !reservation.fingerprint || !reservation.createdAt ||
+      Number.isNaN(Date.parse(reservation.createdAt)) ||
+      !["reserved", "admission-written"].includes(reservation.state)) {
+    throw new Error("Enquiry conversion reservation is incomplete or inconsistent.");
+  }
+  return reservation;
+}
+
+function convertEnquiry_(payload) {
+  const enquiryId = String(payload.enquiryId || "").trim();
+  if (!/^ENQ-\d+$/.test(enquiryId)) throw new Error("A valid Enquiry ID is required.");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sheet = getEnquiriesSourceSheet_();
+    const found = findStructuredRecord_(sheet, CONFIG.ENQUIRY_HEADERS, "Enquiry ID", enquiryId, mapEnquiryRow_);
+    if (!found) throw new Error('Enquiry ID "' + enquiryId + '" was not found.');
+    const properties = PropertiesService.getScriptProperties();
+    const propertyKey = ENQUIRY_CONVERSION_PREFIX_ + enquiryId;
+    let reservation = getEnquiryConversionReservation_(properties, propertyKey, enquiryId);
+    if (found.record.admissionId) {
+      const admissionCode = found.record.admissionId.substring(2, 4);
+      const courseInfo = getCourseCodes_().find(function(course) { return normalizeCourseCode_(course.code) === admissionCode; });
+      if (!courseInfo) throw new Error("Linked admission course code was not found.");
+      const source = findAdmissionSheetForCourse_(courseInfo.courseName).sheet;
+      const associated = findEnquiryAdmission_(source, found.record, null);
+      if (!associated || associated.studentId !== found.record.admissionId) throw new Error("Linked admission association is missing or inconsistent.");
+      if (reservation && (reservation.studentId !== associated.studentId ||
+          reservation.sheetId !== source.getParent().getId() || reservation.fingerprint !== associated.fingerprint)) {
+        throw new Error("Linked admission conflicts with its conversion reservation.");
+      }
+      try {
+        synchronizeConversionStudentIndex_(source, associated.row);
+      } catch (error) {
+        return { success: true, partial: true, studentIndexSynchronized: false,
+          indexWarning: "Students Index synchronization failed: " + error.message,
+          data: { enquiryId: enquiryId, admissionId: associated.studentId, studentId: associated.studentId },
+          error: "Admission is linked, but Students Index could not be repaired. Retry to recover." };
+      }
+      const response = linkEnquiryAdmission_(sheet, found, associated.studentId);
+      if (reservation && !response.indexWarning) properties.deleteProperty(propertyKey);
+      response.studentIndexSynchronized = true;
+      return response;
+    }
+    if (!payload.admission || typeof payload.admission !== "object" || Array.isArray(payload.admission)) throw new Error("Admission details are required.");
+    if (found.record.status === "Not Interested") throw new Error("This enquiry cannot be converted.");
+    if (!found.record.fullName || !found.record.mobileNumber || !found.record.courseInterestedIn) throw new Error("Enquiry is missing required admission details.");
+    const admission = Object.assign(Object.create(null), payload.admission);
+    admission.idempotencyKey = "convert-enquiry:" + enquiryId;
+    admission.enquiryId = enquiryId;
+    const fingerprint = getIdempotencyContext_("add-student", admission).fingerprint;
+    admission.conversionFingerprint = fingerprint;
+    if (found.record.status === "Converted" && !reservation) throw new Error("Converted enquiry has no recoverable admission association.");
+    if (reservation && reservation.fingerprint !== fingerprint) throw new Error("Enquiry conversion details differ from the reserved attempt.");
+    const admissionSheet = reservation
+      ? SpreadsheetApp.openById(reservation.sheetId).getSheets()[0]
+      : findAdmissionSheetForCourse_(admission.course).sheet;
+    let existing = findEnquiryAdmission_(admissionSheet, found.record, reservation);
+    if (existing && existing.fingerprint !== fingerprint) throw new Error("Admission association differs from the conversion details.");
+    if (found.record.status === "Converted" && !existing) throw new Error("Converted enquiry has no recoverable admission source row.");
+    if (!existing && !reservation && (normalizeText_(admission.fullName) !== normalizeText_(found.record.fullName) ||
+        String(admission.mobileNumber || "").trim() !== found.record.mobileNumber ||
+        normalizeCourseName_(admission.course) !== normalizeCourseName_(found.record.courseInterestedIn))) {
+      throw new Error("Admission identity must match the enquiry.");
+    }
+    if (!existing && getIdempotencyResult_(getIdempotencyContext_("add-student", admission)).found) {
+      throw new Error("Admission was recorded but its Enquiry association could not be located.");
+    }
+    let initialStudentIndexWarning = "";
+    if (!existing) {
+      try {
+        const created = addStudent_(admission, { reserve: function(nextId, sourceSheet) {
+          reservation = { enquiryId: enquiryId, studentId: nextId, sheetId: sourceSheet.getParent().getId(),
+            fingerprint: fingerprint, createdAt: reservation ? reservation.createdAt : new Date().toISOString(), state: "reserved" };
+          properties.setProperty(propertyKey, JSON.stringify(reservation));
+        }, recordAdmission: function() {
+          reservation.state = "admission-written";
+          properties.setProperty(propertyKey, JSON.stringify(reservation));
+        } });
+        existing = findEnquiryAdmission_(admissionSheet, found.record, reservation);
+        if (!existing || existing.studentId !== created.student.studentId) throw new Error("Admission association was not saved.");
+        initialStudentIndexWarning = created.indexWarning || "";
+      } catch (error) {
+        if (!reservation) throw error;
+        existing = findEnquiryAdmission_(SpreadsheetApp.openById(reservation.sheetId).getSheets()[0], found.record, reservation);
+        if (!existing) throw error;
+      }
+    }
+    const studentId = existing.studentId;
+    if (reservation && reservation.state === "reserved") {
+      reservation.state = "admission-written";
+      properties.setProperty(propertyKey, JSON.stringify(reservation));
+    }
+    try {
+      synchronizeConversionStudentIndex_(admissionSheet, existing.row);
+    } catch (error) {
+      return { success: true, partial: true, studentIndexSynchronized: false,
+        indexWarning: "Students Index synchronization failed: " + error.message,
+        data: { enquiryId: enquiryId, admissionId: studentId, studentId: studentId },
+        error: "Admission created, but Students Index could not be synchronized. Retry this conversion to repair it." };
+    }
+    try {
+      const response = linkEnquiryAdmission_(sheet, found, studentId);
+      if (!response.indexWarning) properties.deleteProperty(propertyKey);
+      response.studentIndexSynchronized = true;
+      if (initialStudentIndexWarning) response.studentIndexWarning = initialStudentIndexWarning;
+      return response;
+    } catch (error) {
+      Logger.log("Admission created but Enquiry linkage failed: " + error.message);
+      return { success: true, partial: true, data: { enquiryId: enquiryId, admissionId: studentId, studentId: studentId },
+        error: "Admission created, but enquiry could not be linked. Retry this conversion to recover without creating another admission." };
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function addWalkIn_(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   let visitor;
   let indexWarning = "";
+  let idempotency = null;
   try {
+    idempotency = getIdempotencyContext_("add-walkin", payload);
+    const previousResult = getIdempotencyResult_(idempotency);
+    if (previousResult.found) return previousResult.response;
     const now = new Date();
     const sheet = getVisitorsSourceSheet_();
     visitor = visitorFromPayload_(payload, null);
@@ -3504,12 +3934,12 @@ function addWalkIn_(payload) {
       Logger.log("Visitors Index synchronization failed: " + error.message);
       indexWarning = "Walk-in source was saved, but Visitors Index synchronization failed. Rebuild the visitor indexes.";
     }
+    const response = { success: true, data: visitor };
+    if (indexWarning) response.indexWarning = indexWarning;
+    return rememberIdempotentResult_(idempotency, response);
   } finally {
     lock.releaseLock();
   }
-  const response = { success: true, data: visitor };
-  if (indexWarning) response.indexWarning = indexWarning;
-  return response;
 }
 
 function updateWalkIn_(payload) {
@@ -3528,7 +3958,7 @@ function updateWalkIn_(payload) {
     visitor.admissionId = found.record.admissionId;
     visitor.createdAt = found.record.createdAt;
     visitor.updatedAt = new Date();
-    updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor));
+    updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor), CONFIG.VISITOR_HEADERS);
     try { synchronizeVisitorIndex_(visitor); } catch (error) {
       Logger.log("Visitors Index synchronization failed: " + error.message);
       indexWarning = "Walk-in source was updated, but Visitors Index synchronization failed. Rebuild the visitor indexes.";
@@ -3557,7 +3987,7 @@ function markWalkInExit_(payload) {
       visitor.exitTime = new Date();
       visitor.visitStatus = "Completed";
       visitor.updatedAt = new Date();
-      updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor));
+      updateStructuredRecord_(sheet, found.row, buildVisitorRow_(visitor), CONFIG.VISITOR_HEADERS);
     }
     try { synchronizeVisitorIndex_(visitor); } catch (error) {
       Logger.log("Visitors Index synchronization failed: " + error.message);
@@ -3580,7 +4010,11 @@ function addFollowUp_(payload) {
   lock.waitLock(15000);
   let followUp;
   let indexWarning = "";
+  let idempotency = null;
   try {
+    idempotency = getIdempotencyContext_("add-followup", payload);
+    const previousResult = getIdempotencyResult_(idempotency);
+    if (previousResult.found) return previousResult.response;
     const now = new Date();
     const visitorFound = findStructuredRecord_(getVisitorsSourceSheet_(), CONFIG.VISITOR_HEADERS, "Visitor ID", visitorId, mapVisitorRow_);
     if (!visitorFound) throw new Error('Visitor ID "' + visitorId + '" was not found.');
@@ -3601,10 +4035,10 @@ function addFollowUp_(payload) {
       Logger.log("Follow-ups Index synchronization failed: " + error.message);
       indexWarning = "Follow-up source was saved, but Follow-ups Index synchronization failed. Rebuild the visitor indexes.";
     }
+    const response = { success: true, data: followUp };
+    if (indexWarning) response.indexWarning = indexWarning;
+    return rememberIdempotentResult_(idempotency, response);
   } finally { lock.releaseLock(); }
-  const response = { success: true, data: followUp };
-  if (indexWarning) response.indexWarning = indexWarning;
-  return response;
 }
 
 function updateFollowUp_(payload) {
@@ -3633,7 +4067,7 @@ function updateFollowUp_(payload) {
     if (Object.prototype.hasOwnProperty.call(payload, "contactMethod")) followUp.contactMethod = String(payload.contactMethod || "").trim();
     if (Object.prototype.hasOwnProperty.call(payload, "notes")) followUp.notes = String(payload.notes || "").trim();
     followUp.updatedAt = new Date();
-    updateStructuredRecord_(sheet, found.row, buildFollowUpRow_(followUp));
+    updateStructuredRecord_(sheet, found.row, buildFollowUpRow_(followUp), CONFIG.FOLLOW_UP_HEADERS);
     try { synchronizeFollowUpIndex_(followUp); } catch (error) {
       Logger.log("Follow-ups Index synchronization failed: " + error.message);
       indexWarning = "Follow-up source was updated, but Follow-ups Index synchronization failed. Rebuild the visitor indexes.";
@@ -3657,6 +4091,9 @@ function addPayment_(payload) {
   lock.waitLock(15000);
 
   try {
+    const idempotency = getIdempotencyContext_("add-payment", payload);
+    const previousResult = getIdempotencyResult_(idempotency);
+    if (previousResult.found) return previousResult.response;
 
     const course =
       String(payload.course || "").trim();
@@ -3735,14 +4172,14 @@ function addPayment_(payload) {
 
     if (normalizeCourseCode_(courseInfo.code) === "00") {
 
-      return addOtherProgramPayment_(
+      return rememberIdempotentResult_(idempotency, addOtherProgramPayment_(
         payload,
         courseInfo,
         paymentDate,
         feeType,
         paymentMode,
         amountPaid
-      );
+      ));
 
     }
 
@@ -3791,11 +4228,13 @@ function addPayment_(payload) {
         courseInfo.courseName
       );
 
-    const previousPaid =
+    const previousPaymentSummary =
       getPreviousPaid_(
         paymentInfo.sheet,
         studentId
       );
+
+    const previousPaid = previousPaymentSummary.totalPaid;
 
     const totalPaid =
       roundMoney_(
@@ -3815,7 +4254,7 @@ function addPayment_(payload) {
 
     }
 
-    return appendPayment_(
+    return rememberIdempotentResult_(idempotency, appendPayment_(
       paymentInfo.sheet,
       {
         receiptId: getNextReceiptId_(
@@ -3837,11 +4276,12 @@ function addPayment_(payload) {
         previousPaid: previousPaid,
         totalPaid: totalPaid,
         balance: balance,
+        paymentCount: previousPaymentSummary.paymentCount + 1,
         createdBy: getCreatedBy_(),
         createdAt: new Date(),
         remarks: String(payload.remarks || "").trim()
       }
-    );
+    ));
 
   } finally {
 
@@ -4068,26 +4508,29 @@ function getPreviousPaid_(
     2, 1, lastRow - 1, headerInfo.headers.length
   ).getDisplayValues();
 
-  return roundMoney_(
-    values.reduce(
-      function(total, row) {
+  let totalPaid = 0;
+  let paymentCount = 0;
+  values.forEach(function(row) {
         if (
           String(
             row[headerInfo.columns["Student ID"] - 1] || ""
           ).trim() !== studentId
         ) {
-          return total;
+          return;
         }
 
         const paid = normalizeOptionalMoney_(
           row[headerInfo.columns["Amount Paid"] - 1]
         );
 
-        return total + (paid === null ? 0 : paid);
-      },
-      0
-    )
-  );
+        totalPaid += paid === null ? 0 : paid;
+        paymentCount += 1;
+      });
+
+  return {
+    totalPaid: roundMoney_(totalPaid),
+    paymentCount: paymentCount
+  };
 
 }
 

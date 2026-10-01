@@ -39,6 +39,29 @@ describe('Apps Script server-to-server proxy', () => {
     expect(result).toEqual({ body: { success: true, data: [] }, status: 200 })
   })
 
+  it('forwards Enquiries with the same server-only gateway credential', async () => {
+    for (const request of [
+      { action: 'enquiries', method: 'GET', parameters: {} },
+      { action: 'add-enquiry', method: 'POST', parameters: { fullName: 'Jane' } },
+      { action: 'update-enquiry', method: 'POST', parameters: { enquiryId: 'ENQ-000001' } },
+    ] as const) {
+      const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        expect(String(url)).toBe(config.appsScriptUrl)
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(String(init?.body))).toEqual({
+          action: request.action,
+          parameters: request.parameters,
+          gatewaySecret: config.appsScriptGatewaySecret,
+          gatewayIdentity: identity,
+        })
+        return new Response(JSON.stringify({ success: true }), { status: 200 })
+      })
+      const result = await forwardToAppsScript(request, identity, config, fetchMock as FetchImplementation)
+      expect(result).toEqual({ body: { success: true }, status: 200 })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    }
+  })
+
   it('overwrites browser identity and createdBy with verified identity', async () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const envelope = JSON.parse(String(init?.body))

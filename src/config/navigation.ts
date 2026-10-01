@@ -18,7 +18,7 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: UserRoundCheck, label: 'Walk-ins', path: '/walk-ins' },
+  { icon: UserRoundCheck, label: 'Enquiries', path: '/enquiries' },
   { icon: Users, label: 'Admissions', path: '/admissions' },
   { icon: History, label: 'Payments', path: '/payment-history' },
   { icon: ClipboardPlus, label: 'New Admission', path: '/new-admission' },
