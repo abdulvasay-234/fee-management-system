@@ -1,4 +1,6 @@
 let googleIdentityPromise: Promise<GoogleAccountsId> | null = null
+let initializedClientId: string | null = null
+let activeCredentialCallback: ((response: GoogleCredentialResponse) => void) | null = null
 
 export function loadGoogleIdentityServices() {
   if (window.google?.accounts.id) return Promise.resolve(window.google.accounts.id)
@@ -31,4 +33,23 @@ export function loadGoogleIdentityServices() {
   })
 
   return googleIdentityPromise
+}
+
+export async function initializeGoogleIdentityServices(
+  clientId: string,
+  callback: (response: GoogleCredentialResponse) => void,
+) {
+  const accounts = await loadGoogleIdentityServices()
+  activeCredentialCallback = callback
+
+  if (initializedClientId !== clientId) {
+    accounts.initialize({
+      client_id: clientId,
+      cancel_on_tap_outside: true,
+      callback: (response) => activeCredentialCallback?.(response),
+    })
+    initializedClientId = clientId
+  }
+
+  return accounts
 }

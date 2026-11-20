@@ -28,6 +28,19 @@ type ConversionContext = vm.Context & {
   synchronizeEnquiryIndex_: (enquiry: Record<string, unknown>) => void
 }
 
+const TEST_ENQUIRY_ID = 'ENQ-000001'
+const SECOND_TEST_ENQUIRY_ID = 'ENQ-000002'
+const LEGACY_TEST_ENQUIRY_ID = 'ENQ-000009'
+const FIRST_TEST_STUDENT_ID = '26020101'
+const SECOND_TEST_STUDENT_ID = '26020102'
+const OTHER_COURSE_TEST_STUDENT_ID = '26000101'
+const TEST_PHONE_PRIMARY = '9000000001'
+const TEST_PHONE_LEGACY = '9000000002'
+const TEST_PHONE_EDITED = '9000000003'
+const TEST_CONVERSION_PROPERTY_KEY = `LSA_ENQUIRY_CONVERSION_${TEST_ENQUIRY_ID}`
+const TEST_CONVERSION_PROPERTY_CREATED_EVENT = `property:${TEST_CONVERSION_PROPERTY_KEY}`
+const TEST_CONVERSION_PROPERTY_DELETED_EVENT = `property:delete:${TEST_CONVERSION_PROPERTY_KEY}`
+
 const enquiryColumn = {
   courseInterestedIn: 8,
   otherProgramDetails: 9,
@@ -162,11 +175,11 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
   const enquirySheet = new FakeSheet('enquiries', enquiryHeaders, events)
   const admissionSheet = new FakeSheet('admissions', [...admissionHeaders], events)
   const enquiryRow = buildRow(enquiryHeaders, {
-    'Enquiry ID': 'ENQ-000001',
-    'Full Name': 'Enquiries Test Record',
-    'Mobile Number': '9999999999',
-    Email: 'enquiries-test@example.com',
-    College: 'LSA Test College',
+    'Enquiry ID': TEST_ENQUIRY_ID,
+    'Full Name': 'Test Student Alpha',
+    'Mobile Number': TEST_PHONE_PRIMARY,
+    Email: 'student.alpha@example.test',
+    College: 'Synthetic Test College 01',
     'Education Level': 'B.Tech',
     Specialization: 'Computer Science',
     'Year of Graduation': '2026',
@@ -174,7 +187,7 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
     'Other Program Details': otherProgramDetails,
     Referral: 'Website',
     'Notes / Remarks': 'Controlled Enquiries API test record',
-    'Consulted By': 'LSA Test',
+    'Consulted By': 'Test Staff',
     'Enquiry Date': '2026-10-01',
     Status: status,
     'Admission ID': '',
@@ -209,18 +222,18 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
   }
 
   const admission = {
-    fullName: 'Enquiries Test Record', mobileNumber: '9999999999', email: 'enquiries-test@example.com',
+    fullName: 'Test Student Alpha', mobileNumber: TEST_PHONE_PRIMARY, email: 'student.alpha@example.test',
     course: 'Data Science', batch: '01', admissionDate: '2026-10-01', startTime: '18:00', endTime: '20:00',
     totalCourseFee: 45000, discount: 1000, remarks: 'Existing admission remarks',
   }
   const convert = (details: Record<string, unknown> = admission) => context.dispatchGatewayAction_(
-    'convert-enquiry', { enquiryId: 'ENQ-000001', admission: details }, {},
+    'convert-enquiry', { enquiryId: TEST_ENQUIRY_ID, admission: details }, {},
   )
   return {
     admission, admissionSheet, context, convert, enquirySheet, events, originalCreatedAt, properties,
     get enquiryRecord() {
       return vm.runInContext(
-        'findStructuredRecord_(getEnquiriesSourceSheet_(), CONFIG.ENQUIRY_HEADERS, "Enquiry ID", "ENQ-000001", mapEnquiryRow_).record',
+        `findStructuredRecord_(getEnquiriesSourceSheet_(), CONFIG.ENQUIRY_HEADERS, "Enquiry ID", "${TEST_ENQUIRY_ID}", mapEnquiryRow_).record`,
         context,
       ) as Record<string, unknown>
     },
@@ -246,7 +259,7 @@ describe('Enquiry conversion safety', () => {
     ]
     const legacySheet = new FakeSheet('legacy-enquiries', legacyHeaders, fixture.events)
     const historical = buildRow(legacyHeaders, {
-      'Enquiry ID': 'ENQ-000009', 'Full Name': 'Legacy Student', 'Mobile Number': '9000000009',
+      'Enquiry ID': LEGACY_TEST_ENQUIRY_ID, 'Full Name': 'Legacy Test Student', 'Mobile Number': TEST_PHONE_LEGACY,
       'Degree / Course': 'B.Tech', 'Year of Graduation': '2022', 'Course Interested In': 'Data Science',
       'Enquiry Date': '2026-09-01', Status: 'Follow-up', 'Created At': fixture.originalCreatedAt,
       'Updated At': fixture.originalCreatedAt,
@@ -263,7 +276,7 @@ describe('Enquiry conversion safety', () => {
     const mapper = vm.runInContext('mapEnquiryRow_', fixture.context) as (...args: unknown[]) => unknown
     const headers = vm.runInContext('CONFIG.ENQUIRY_HEADERS', fixture.context) as string[]
     migrate(legacySheet)
-    const migrated = find(legacySheet, headers, 'Enquiry ID', 'ENQ-000009', mapper)
+    const migrated = find(legacySheet, headers, 'Enquiry ID', LEGACY_TEST_ENQUIRY_ID, mapper)
     expect(legacySheet.headers[5]).toBe('Education Level')
     expect(legacySheet.headers).toContain('Specialization')
     expect(legacySheet.headers).toContain('Other Program Details')
@@ -274,7 +287,7 @@ describe('Enquiry conversion safety', () => {
   it('stores Other Programs details in dedicated Admission and Students Index fields', () => {
     const fixture = setup('Follow-up', 'Other Programs', 'AI for Business')
     const result = fixture.convert({ ...fixture.admission, course: 'Other Programs', degreeCourse: 'B.Tech - Computer Science', otherProgramDetails: 'AI for Business' })
-    expect(result.data.studentId).toBe('26000101')
+    expect(result.data.studentId).toBe(OTHER_COURSE_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.admissionSheet.rows[0][12]).toBe('Other Programs')
     expect(fixture.admissionSheet.rows[0][28]).toBe('AI for Business')
@@ -282,7 +295,7 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.admissionSheet.rows[0][23]).toBe('Existing admission remarks')
     expect(fixture.indexedStudent).toMatchObject({ otherProgramDetails: 'AI for Business', remarks: 'Existing admission remarks' })
     expect(fixture.enquirySheet.rows[0][enquiryColumn.otherProgramDetails]).toBe('AI for Business')
-    expect(fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' }).data.studentId).toBe('26000101')
+    expect(fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID }).data.studentId).toBe(OTHER_COURSE_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
@@ -292,7 +305,7 @@ describe('Enquiry conversion safety', () => {
       ...fixture.admission,
       course: 'Other Programs',
       degreeCourse: 'B.Tech - CSE',
-      collegeName: 'Mock College',
+      collegeName: 'Synthetic Test College 02',
       yearOfPassing: '2026',
       otherProgramDetails: 'AI for Business',
     })
@@ -300,7 +313,7 @@ describe('Enquiry conversion safety', () => {
     const details = fixture.context.getStudentDetails_({ studentId: converted.data.studentId })
     expect(details.student).toMatchObject({
       studentId: converted.data.studentId,
-      collegeName: 'Mock College',
+      collegeName: 'Synthetic Test College 02',
       degreeCourse: 'B.Tech - CSE',
       yearOfPassing: '2026',
       otherProgramDetails: 'AI for Business',
@@ -314,26 +327,26 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.enquiryRecord).toMatchObject({ educationLevel: 'B.Tech', specialization: 'Computer Science', admissionId: '' })
     const result = fixture.convert()
     expect(result.success).toBe(true)
-    expect(result.data).toEqual({ enquiryId: 'ENQ-000001', admissionId: '26020101', studentId: '26020101' })
+    expect(result.data).toEqual({ enquiryId: TEST_ENQUIRY_ID, admissionId: FIRST_TEST_STUDENT_ID, studentId: FIRST_TEST_STUDENT_ID })
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.admissionSheet.rows[0][23]).toBe('Existing admission remarks')
     expect(fixture.admissionSheet.headers.slice(-2)).toEqual(['Enquiry ID', 'Conversion Fingerprint'])
-    expect(fixture.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe('ENQ-000001')
+    expect(fixture.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe(TEST_ENQUIRY_ID)
     expect(fixture.admissionSheet.rows[0][admissionColumn.conversionFingerprint]).toBeTruthy()
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.createdAt]).toBe(fixture.originalCreatedAt)
     expect((fixture.enquirySheet.rows[0][enquiryColumn.updatedAt] as Date).getTime()).toBeGreaterThan(fixture.originalCreatedAt.getTime())
-    expect(fixture.indexedEnquiry).toMatchObject({ enquiryId: 'ENQ-000001', admissionId: '26020101', status: 'Converted' })
+    expect(fixture.indexedEnquiry).toMatchObject({ enquiryId: TEST_ENQUIRY_ID, admissionId: FIRST_TEST_STUDENT_ID, status: 'Converted' })
     expect(fixture.indexedEnquiry?.createdAt).toBe(fixture.enquirySheet.rows[0][enquiryColumn.createdAt])
     expect(fixture.indexedEnquiry?.updatedAt).toBe(fixture.enquirySheet.rows[0][enquiryColumn.updatedAt])
     expect(fixture.events.indexOf('enquiries:write')).toBeLessThan(fixture.events.indexOf('enquiries:index'))
-    expect(fixture.events.indexOf('property:LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBeLessThan(fixture.events.indexOf('admissions:write'))
-    expect(fixture.events.indexOf('lock:acquired')).toBeLessThan(fixture.events.indexOf('property:LSA_ENQUIRY_CONVERSION_ENQ-000001'))
+    expect(fixture.events.indexOf(TEST_CONVERSION_PROPERTY_CREATED_EVENT)).toBeLessThan(fixture.events.indexOf('admissions:write'))
+    expect(fixture.events.indexOf('lock:acquired')).toBeLessThan(fixture.events.indexOf(TEST_CONVERSION_PROPERTY_CREATED_EVENT))
     expect(fixture.events.lastIndexOf('students:index')).toBeLessThan(fixture.events.indexOf('enquiries:write'))
-    expect(fixture.events.indexOf('enquiries:index')).toBeLessThan(fixture.events.indexOf('property:delete:LSA_ENQUIRY_CONVERSION_ENQ-000001'))
-    expect(fixture.events.indexOf('property:delete:LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBeLessThan(fixture.events.indexOf('lock:released'))
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(false)
+    expect(fixture.events.indexOf('enquiries:index')).toBeLessThan(fixture.events.indexOf(TEST_CONVERSION_PROPERTY_DELETED_EVENT))
+    expect(fixture.events.indexOf(TEST_CONVERSION_PROPERTY_DELETED_EVENT)).toBeLessThan(fixture.events.indexOf('lock:released'))
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
     expect(fixture.studentIndexWrites).toBe(2)
     expect(fixture.enquiryIndexWrites).toBe(1)
     expect(fixture.lockAcquisitions).toBe(1)
@@ -342,8 +355,8 @@ describe('Enquiry conversion safety', () => {
   it('returns the existing admission without a second write, even without form data', () => {
     const fixture = setup()
     fixture.convert()
-    const result = fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' })
-    expect(result.data.studentId).toBe('26020101')
+    const result = fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID })
+    expect(result.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.admissionSheet.writes).toBe(2)
     expect(fixture.enquirySheet.writes).toBe(1)
@@ -352,52 +365,52 @@ describe('Enquiry conversion safety', () => {
   it('returns a linked admission after editable Enquiry identity and course fields change', () => {
     const fixture = setup()
     fixture.convert()
-    fixture.enquirySheet.rows[0][1] = 'Updated Enquiry Name'
-    fixture.enquirySheet.rows[0][2] = '8888888888'
+    fixture.enquirySheet.rows[0][1] = 'Updated Test Student'
+    fixture.enquirySheet.rows[0][2] = TEST_PHONE_EDITED
     fixture.enquirySheet.rows[0][enquiryColumn.courseInterestedIn] = 'Another Course'
-    const result = fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' })
-    expect(result.data.studentId).toBe('26020101')
+    const result = fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID })
+    expect(result.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
-    expect(fixture.enquirySheet.rows[0][1]).toBe('Updated Enquiry Name')
+    expect(fixture.enquirySheet.rows[0][1]).toBe('Updated Test Student')
   })
 
   it('preserves the original add-student lock, remarks and index behavior', () => {
     const fixture = setup()
-    expect(fixture.context.addStudent_(fixture.admission).student.studentId).toBe('26020101')
+    expect(fixture.context.addStudent_(fixture.admission).student.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.lockAcquisitions).toBe(1)
     expect(fixture.admissionSheet.rows[0][23]).toBe('Existing admission remarks')
     expect(fixture.studentIndexWrites).toBe(1)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(false)
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
   })
 
   it('allows normal admission on a legacy sheet without conversion or education headers', () => {
     const fixture = setup()
     fixture.admissionSheet.headers.splice(25)
     const historical = Array(fixture.admissionSheet.headers.length).fill('')
-    historical[0] = '26020101'
+    historical[0] = FIRST_TEST_STUDENT_ID
     historical[22] = 44000
     fixture.admissionSheet.rows.push(historical)
     fixture.context.addStudent_(fixture.admission)
     expect(fixture.admissionSheet.headers).toHaveLength(28)
     expect(fixture.admissionSheet.rows[0]).toEqual(historical)
-    expect(fixture.admissionSheet.rows[1][0]).toBe('26020102')
+    expect(fixture.admissionSheet.rows[1][0]).toBe(SECOND_TEST_STUDENT_ID)
   })
 
   it('extends only headers on first conversion and leaves existing rows with blank metadata', () => {
     const fixture = setup()
     const historical = Array(fixture.admissionSheet.headers.length).fill('')
-    historical[0] = '26020101'
+    historical[0] = FIRST_TEST_STUDENT_ID
     historical[22] = 44000
     fixture.admissionSheet.rows.push(historical)
     const original = [...historical]
     const converted = fixture.convert()
-    expect(converted.data.studentId).toBe('26020102')
+    expect(converted.data.studentId).toBe(SECOND_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.headers.slice(-2)).toEqual(['Enquiry ID', 'Conversion Fingerprint'])
     expect(fixture.admissionSheet.rows[0]).toEqual(original)
     expect(fixture.admissionSheet.rows[0][admissionColumn.otherProgramDetails]).toBeUndefined()
     expect(fixture.admissionSheet.rows[1][admissionColumn.otherProgramDetails]).toBe('')
-    expect(fixture.admissionSheet.rows[1][admissionColumn.enquiryId]).toBe('ENQ-000001')
+    expect(fixture.admissionSheet.rows[1][admissionColumn.enquiryId]).toBe(TEST_ENQUIRY_ID)
     expect(fixture.admissionSheet.rows[1][admissionColumn.conversionFingerprint]).toBeTruthy()
   })
 
@@ -407,7 +420,7 @@ describe('Enquiry conversion safety', () => {
     const first = [...fixture.admissionSheet.rows[0]]
     fixture.context.addStudent_(fixture.admission)
     expect(fixture.admissionSheet.rows[0]).toEqual(first)
-    expect(fixture.admissionSheet.rows[1][0]).toBe('26020102')
+    expect(fixture.admissionSheet.rows[1][0]).toBe(SECOND_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows[1][admissionColumn.enquiryId]).toBe('')
     expect(fixture.admissionSheet.rows[1][admissionColumn.conversionFingerprint]).toBe('')
   })
@@ -416,7 +429,7 @@ describe('Enquiry conversion safety', () => {
     const conversion = setup()
     conversion.convert({ ...conversion.admission, remarks: '  Original remarks  ' })
     expect(conversion.admissionSheet.rows[0][23]).toBe('  Original remarks  ')
-    expect(conversion.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe('ENQ-000001')
+    expect(conversion.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe(TEST_ENQUIRY_ID)
 
     const regular = setup()
     regular.context.addStudent_({ ...regular.admission, remarks: '  Original remarks  ' })
@@ -427,19 +440,19 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.failLedger()
     const result = fixture.convert()
-    expect(result.data.studentId).toBe('26020101')
+    expect(result.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
-    expect(fixture.convert().data.studentId).toBe('26020101')
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
   it('recovers an admission committed before its write acknowledgement', () => {
     const fixture = setup()
     fixture.admissionSheet.failAfterNextWrite = true
-    expect(fixture.convert().data.studentId).toBe('26020101')
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
-    expect(fixture.convert().data.studentId).toBe('26020101')
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
@@ -456,11 +469,11 @@ describe('Enquiry conversion safety', () => {
   it('keeps existing payment enrichment when rebuilding Students Index from admission source', () => {
     const fixture = setup()
     fixture.setPayments([{
-      studentId: '26020101', receiptId: 'FEE-001', paymentDate: '2026-10-01', totalPaid: 5000, balance: 39000,
+      studentId: FIRST_TEST_STUDENT_ID, receiptId: 'FEE-001', paymentDate: '2026-10-01', totalPaid: 5000, balance: 39000,
     }])
     fixture.convert()
     expect(fixture.indexedStudent).toMatchObject({
-      studentId: '26020101', finalFee: 44000, totalPaid: 5000, balance: 39000,
+      studentId: FIRST_TEST_STUDENT_ID, finalFee: 44000, totalPaid: 5000, balance: 39000,
       paymentCount: 1, latestReceiptId: 'FEE-001',
     })
     expect(fixture.admissionSheet.rows).toHaveLength(1)
@@ -472,11 +485,11 @@ describe('Enquiry conversion safety', () => {
     const partial = fixture.convert()
     expect(partial).toMatchObject({ success: true, partial: true, studentIndexSynchronized: false })
     expect(partial.indexWarning).toMatch(/Students Index synchronization failed/)
-    expect(partial.data.studentId).toBe('26020101')
+    expect(partial.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     const recovered = fixture.convert()
-    expect(recovered.data.studentId).toBe('26020101')
+    expect(recovered.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(recovered.studentIndexSynchronized).toBe(true)
     expect(fixture.studentIndexWrites).toBe(1)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
@@ -490,13 +503,13 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.admissionSheet.rows).toHaveLength(0)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
     expect(fixture.enquirySheet.rows[0][enquiryColumn.createdAt]).toBe(fixture.originalCreatedAt)
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(true)
-    const reserved = JSON.parse(fixture.properties.get('LSA_ENQUIRY_CONVERSION_ENQ-000001') ?? '')
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(true)
+    const reserved = JSON.parse(fixture.properties.get(TEST_CONVERSION_PROPERTY_KEY) ?? '')
     expect(reserved).toMatchObject({
-      enquiryId: 'ENQ-000001', studentId: '26020101', sheetId: 'admissions', state: 'reserved',
+      enquiryId: TEST_ENQUIRY_ID, studentId: FIRST_TEST_STUDENT_ID, sheetId: 'admissions', state: 'reserved',
     })
     expect(() => fixture.convert({ ...fixture.admission, totalCourseFee: 46000 })).toThrow(/details differ/)
-    expect(fixture.convert().data.studentId).toBe('26020101')
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(reserved.createdAt).toBeTruthy()
   })
@@ -505,10 +518,10 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.admissionSheet.failNextWrite = true
     expect(() => fixture.convert()).toThrow(/source unavailable/)
-    const initial = JSON.parse(fixture.properties.get('LSA_ENQUIRY_CONVERSION_ENQ-000001') ?? '')
+    const initial = JSON.parse(fixture.properties.get(TEST_CONVERSION_PROPERTY_KEY) ?? '')
     fixture.admissionSheet.failNextWrite = true
     expect(() => fixture.convert()).toThrow(/source unavailable/)
-    const retried = JSON.parse(fixture.properties.get('LSA_ENQUIRY_CONVERSION_ENQ-000001') ?? '')
+    const retried = JSON.parse(fixture.properties.get(TEST_CONVERSION_PROPERTY_KEY) ?? '')
     expect(retried.createdAt).toBe(initial.createdAt)
     expect(retried.studentId).toBe(initial.studentId)
     expect(retried.state).toBe('reserved')
@@ -522,12 +535,12 @@ describe('Enquiry conversion safety', () => {
     fixture.enquirySheet.failNextWrite = true
     const partial = fixture.convert()
     expect(partial.partial).toBe(true)
-    expect(partial.data.studentId).toBe('26020101')
+    expect(partial.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     const recovered = fixture.convert()
     expect(recovered.partial).toBeUndefined()
-    expect(recovered.data.studentId).toBe('26020101')
+    expect(recovered.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.createdAt]).toBe(fixture.originalCreatedAt)
     expect(fixture.enquiryIndexWrites).toBe(1)
@@ -537,13 +550,13 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.enquirySheet.failNextWrite = true
     expect(fixture.convert().partial).toBe(true)
-    fixture.enquirySheet.rows[0][1] = 'Edited Name'
-    fixture.enquirySheet.rows[0][2] = '8888888888'
+    fixture.enquirySheet.rows[0][1] = 'Edited Test Student'
+    fixture.enquirySheet.rows[0][2] = TEST_PHONE_EDITED
     fixture.enquirySheet.rows[0][enquiryColumn.courseInterestedIn] = 'Another Course'
     const recovered = fixture.convert()
-    expect(recovered.data.studentId).toBe('26020101')
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
-    expect(fixture.enquirySheet.rows[0][1]).toBe('Edited Name')
+    expect(recovered.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.enquirySheet.rows[0][1]).toBe('Edited Test Student')
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
@@ -553,8 +566,8 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.convert().partial).toBe(true)
     fixture.enquirySheet.rows[0][enquiryColumn.status] = 'Converted'
     const recovered = fixture.convert()
-    expect(recovered.data.studentId).toBe('26020101')
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
+    expect(recovered.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
@@ -562,10 +575,10 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.enquirySheet.failAfterNextWrite = true
     expect(fixture.convert().partial).toBe(true)
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
     const updatedAt = fixture.enquirySheet.rows[0][enquiryColumn.updatedAt]
-    expect(fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' }).data.studentId).toBe('26020101')
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(false)
+    expect(fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID }).data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.updatedAt]).toBe(updatedAt)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.createdAt]).toBe(fixture.originalCreatedAt)
@@ -575,48 +588,48 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.failEnquiryIndex()
     expect(fixture.convert().indexWarning).toMatch(/Index synchronization failed/)
-    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe('26020101')
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.enquiryIndexWrites).toBe(0)
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(true)
-    expect(fixture.convert().data.studentId).toBe('26020101')
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(true)
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.enquiryIndexWrites).toBe(1)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
-    expect(fixture.properties.has('LSA_ENQUIRY_CONVERSION_ENQ-000001')).toBe(false)
+    expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
   })
 
   it('returns the existing ID if an already-linked Students Index repair fails', () => {
     const fixture = setup()
     fixture.convert()
     fixture.failStudentIndex(1)
-    const result = fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' })
+    const result = fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID })
     expect(result).toMatchObject({ partial: true, studentIndexSynchronized: false })
-    expect(result.data.studentId).toBe('26020101')
+    expect(result.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
-    expect(fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' }).studentIndexSynchronized).toBe(true)
+    expect(fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID }).studentIndexSynchronized).toBe(true)
   })
 
   it('fails closed on malformed or conflicting reservation metadata', () => {
     const malformed = setup()
-    malformed.properties.set('LSA_ENQUIRY_CONVERSION_ENQ-000001', '{broken')
+    malformed.properties.set(TEST_CONVERSION_PROPERTY_KEY, '{broken')
     expect(() => malformed.convert()).toThrow(/reservation is invalid/)
     expect(malformed.admissionSheet.rows).toHaveLength(0)
 
     const empty = setup()
-    empty.properties.set('LSA_ENQUIRY_CONVERSION_ENQ-000001', 'null')
+    empty.properties.set(TEST_CONVERSION_PROPERTY_KEY, 'null')
     expect(() => empty.convert()).toThrow(/reservation is invalid/)
     expect(empty.admissionSheet.rows).toHaveLength(0)
 
     const inconsistent = setup()
-    inconsistent.properties.set('LSA_ENQUIRY_CONVERSION_ENQ-000001', JSON.stringify({
-      enquiryId: 'ENQ-000002', studentId: '26020101', sheetId: 'admissions', fingerprint: 'wrong',
+    inconsistent.properties.set(TEST_CONVERSION_PROPERTY_KEY, JSON.stringify({
+      enquiryId: SECOND_TEST_ENQUIRY_ID, studentId: FIRST_TEST_STUDENT_ID, sheetId: 'admissions', fingerprint: 'wrong',
       createdAt: new Date().toISOString(), state: 'reserved',
     }))
     expect(() => inconsistent.convert()).toThrow(/reservation is incomplete or inconsistent/)
     expect(inconsistent.admissionSheet.rows).toHaveLength(0)
 
     const invalidTimestamp = setup()
-    invalidTimestamp.properties.set('LSA_ENQUIRY_CONVERSION_ENQ-000001', JSON.stringify({
-      enquiryId: 'ENQ-000001', studentId: '26020101', sheetId: 'admissions', fingerprint: 'wrong',
+    invalidTimestamp.properties.set(TEST_CONVERSION_PROPERTY_KEY, JSON.stringify({
+      enquiryId: TEST_ENQUIRY_ID, studentId: FIRST_TEST_STUDENT_ID, sheetId: 'admissions', fingerprint: 'wrong',
       createdAt: 'not-a-date', state: 'reserved',
     }))
     expect(() => invalidTimestamp.convert()).toThrow(/reservation is incomplete or inconsistent/)
@@ -626,26 +639,26 @@ describe('Enquiry conversion safety', () => {
   it('fails closed when a linked admission conflicts with a lingering reservation', () => {
     const fixture = setup()
     fixture.convert()
-    fixture.properties.set('LSA_ENQUIRY_CONVERSION_ENQ-000001', JSON.stringify({
-      enquiryId: 'ENQ-000001', studentId: '26020102', sheetId: 'admissions', fingerprint: 'wrong',
+    fixture.properties.set(TEST_CONVERSION_PROPERTY_KEY, JSON.stringify({
+      enquiryId: TEST_ENQUIRY_ID, studentId: SECOND_TEST_STUDENT_ID, sheetId: 'admissions', fingerprint: 'wrong',
       createdAt: new Date().toISOString(), state: 'reserved',
     }))
-    expect(() => fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000001' })).toThrow(/conflicts with its conversion reservation/)
+    expect(() => fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID })).toThrow(/conflicts with its conversion reservation/)
     expect(fixture.admissionSheet.rows).toHaveLength(1)
   })
 
   it('serializes conversions for different enquiries and assigns different student IDs', () => {
     const fixture = setup()
     const second = [...fixture.enquirySheet.rows[0]]
-    second[0] = 'ENQ-000002'
+    second[0] = SECOND_TEST_ENQUIRY_ID
     fixture.enquirySheet.rows.push(second)
     const first = fixture.convert()
-    const next = fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000002', admission: fixture.admission })
-    expect(first.data.studentId).toBe('26020101')
-    expect(next.data.studentId).toBe('26020102')
+    const next = fixture.context.convertEnquiry_({ enquiryId: SECOND_TEST_ENQUIRY_ID, admission: fixture.admission })
+    expect(first.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(next.data.studentId).toBe(SECOND_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(2)
     expect(fixture.lockAcquisitions).toBe(2)
-    expect(fixture.enquirySheet.rows[1][enquiryColumn.admissionId]).toBe('26020102')
+    expect(fixture.enquirySheet.rows[1][enquiryColumn.admissionId]).toBe(SECOND_TEST_STUDENT_ID)
   })
 
   it('keeps a single admission when two same-enquiry requests are scheduled together', async () => {
@@ -654,7 +667,7 @@ describe('Enquiry conversion safety', () => {
       Promise.resolve().then(() => fixture.convert()),
       Promise.resolve().then(() => fixture.convert()),
     ])
-    expect(results.map((result) => result.data.studentId)).toEqual(['26020101', '26020101'])
+    expect(results.map((result) => result.data.studentId)).toEqual([FIRST_TEST_STUDENT_ID, FIRST_TEST_STUDENT_ID])
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.lockAcquisitions).toBe(2)
   })
@@ -662,13 +675,13 @@ describe('Enquiry conversion safety', () => {
   it('assigns distinct admissions when two different-enquiry requests are scheduled together', async () => {
     const fixture = setup()
     const second = [...fixture.enquirySheet.rows[0]]
-    second[0] = 'ENQ-000002'
+    second[0] = SECOND_TEST_ENQUIRY_ID
     fixture.enquirySheet.rows.push(second)
     const results = await Promise.all([
       Promise.resolve().then(() => fixture.convert()),
-      Promise.resolve().then(() => fixture.context.convertEnquiry_({ enquiryId: 'ENQ-000002', admission: fixture.admission })),
+      Promise.resolve().then(() => fixture.context.convertEnquiry_({ enquiryId: SECOND_TEST_ENQUIRY_ID, admission: fixture.admission })),
     ])
-    expect(results.map((result) => result.data.studentId)).toEqual(['26020101', '26020102'])
+    expect(results.map((result) => result.data.studentId)).toEqual([FIRST_TEST_STUDENT_ID, SECOND_TEST_STUDENT_ID])
     expect(fixture.admissionSheet.rows).toHaveLength(2)
     expect(fixture.lockAcquisitions).toBe(2)
   })
@@ -677,13 +690,13 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.admissionSheet.rows.push(Array(fixture.admissionSheet.headers.length).fill(''))
     const row = fixture.admissionSheet.rows[0]
-    row[0] = '26020101'
-    row[1] = 'Enquiries Test Record'
-    row[6] = '9999999999'
+    row[0] = FIRST_TEST_STUDENT_ID
+    row[1] = 'Test Student Alpha'
+    row[6] = TEST_PHONE_PRIMARY
     row[13] = 'Data Science'
     row[23] = '[Enquiry:ENQ-000001]'
     const result = fixture.convert()
-    expect(result.data.studentId).toBe('26020102')
+    expect(result.data.studentId).toBe(SECOND_TEST_STUDENT_ID)
     expect(fixture.admissionSheet.rows).toHaveLength(2)
     expect(row[23]).toBe('[Enquiry:ENQ-000001]')
     expect(fixture.admissionSheet.rows[1][23]).toBe('Existing admission remarks')
@@ -693,11 +706,11 @@ describe('Enquiry conversion safety', () => {
     const fixture = setup()
     fixture.admissionSheet.headers.push('Other Program Details', 'Enquiry ID', 'Conversion Fingerprint')
     const row = Array(fixture.admissionSheet.headers.length).fill('')
-    row[0] = '26020101'
-    row[1] = 'Another Student'
-    row[6] = '9999999999'
+    row[0] = FIRST_TEST_STUDENT_ID
+    row[1] = 'Another Test Student'
+    row[6] = TEST_PHONE_PRIMARY
     row[13] = 'Data Science'
-    row[admissionColumn.enquiryId] = 'ENQ-000001'
+    row[admissionColumn.enquiryId] = TEST_ENQUIRY_ID
     row[admissionColumn.conversionFingerprint] = 'other-fingerprint'
     fixture.admissionSheet.rows.push(row)
     expect(() => fixture.convert()).toThrow(/association does not match/)

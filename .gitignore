@@ -33,3 +33,20 @@ dist-ssr
 .clasprc.json.*
 .clasp.json
 .clasp.json.*
+
+# Private credentials and data exports
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials*.json
+service-account*.json
+client_secret*.json
+*.csv
+*.xlsx
+*.xls
+!*.example.csv
+!credentials*.example.json
+!service-account*.example.json
+!client_secret*.example.json

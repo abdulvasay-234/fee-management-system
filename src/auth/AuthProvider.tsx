@@ -1,8 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ApiHttpError, validateCredential } from '../services/api'
 import { AuthContext, type AuthStatus, type AuthUser } from './AuthContext'
 import { clearIdToken, setAuthFailureHandler, setIdToken } from './authService'
-import { loadGoogleIdentityServices } from './googleIdentity'
+import { initializeGoogleIdentityServices } from './googleIdentity'
 
 interface GoogleDisplayClaims {
   email?: unknown
@@ -38,8 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState(clientId ? '' : 'Google Sign-In is not configured for this application.')
   const [googleAccounts, setGoogleAccounts] = useState<GoogleAccountsId | null>(null)
+  const authGeneration = useRef(0)
 
   useEffect(() => setAuthFailureHandler((failure) => {
+    authGeneration.current += 1
     setToken(null)
     if (failure === 'accessDenied') {
       setStatus('accessDenied')
@@ -57,40 +59,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return () => { active = false }
     }
 
-    void loadGoogleIdentityServices().then((accounts) => {
+    void initializeGoogleIdentityServices(clientId, (response) => {
       if (!active) return
-      accounts.initialize({
-        client_id: clientId,
-        cancel_on_tap_outside: true,
-        callback: (response) => {
-          const candidateUser = readDisplayClaims(response.credential)
-          setError('')
-          setStatus('loading')
-          void validateCredential(response.credential).then(() => {
-            if (!active) return
-            if (!candidateUser) throw new Error('Google did not return a usable identity.')
-            setIdToken(response.credential)
-            setToken(response.credential)
-            setUser(candidateUser)
-            setStatus('authenticated')
-          }).catch((cause: unknown) => {
-            if (!active) return
-            clearIdToken()
-            setToken(null)
-            if (cause instanceof ApiHttpError && cause.status === 403) {
-              setUser(candidateUser)
-              setStatus('accessDenied')
-              setError('Your Google account is not authorized to access this application.')
-              return
-            }
-            setUser(null)
-            setStatus('unauthenticated')
-            setError(cause instanceof ApiHttpError && cause.status === 401
-              ? 'Google authentication could not be verified. Please try again.'
-              : 'Unable to complete sign-in. Please try again.')
-          })
-        },
+      const generation = ++authGeneration.current
+      const candidateUser = readDisplayClaims(response.credential)
+      setError('')
+      setStatus('loading')
+      void validateCredential(response.credential).then(() => {
+        if (!active || generation !== authGeneration.current) return
+        if (!candidateUser) throw new Error('Google did not return a usable identity.')
+        setIdToken(response.credential)
+        setToken(response.credential)
+        setUser(candidateUser)
+        setStatus('authenticated')
+      }).catch((cause: unknown) => {
+        if (!active || generation !== authGeneration.current) return
+        clearIdToken()
+        setToken(null)
+        if (cause instanceof ApiHttpError && cause.status === 403) {
+          setUser(candidateUser)
+          setStatus('accessDenied')
+          setError('Your Google account is not authorized to access this application.')
+          return
+        }
+        setUser(null)
+        setStatus('unauthenticated')
+        setError(cause instanceof ApiHttpError && cause.status === 401
+          ? 'Google authentication could not be verified. Please try again.'
+          : 'Unable to complete sign-in. Please try again.')
       })
+    }).then((accounts) => {
+      if (!active) return
       setGoogleAccounts(accounts)
       setStatus('unauthenticated')
     }).catch((cause: unknown) => {
@@ -103,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clientId])
 
   function signOut() {
+    authGeneration.current += 1
     clearIdToken()
     setToken(null)
     setUser(null)
