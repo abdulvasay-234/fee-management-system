@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { Button } from '../components/ui/Button'
 import { useAuth } from './useAuth'
 
-const hackunionLogo = 'https://vasay.github.io/HU-New/favicon/favicon.svg'
+const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/HackUnion-Logo.png`
 
 export function AuthLoadingScreen() {
   return (

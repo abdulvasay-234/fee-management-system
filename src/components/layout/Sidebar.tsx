@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { navigationItems } from '../../config/navigation'
 
-const lsaWhiteLogo = `${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent-%20WHite.png`
+const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/HackUnion-Logo.png`
 
 interface SidebarProps {
   isOpen: boolean
@@ -16,10 +16,10 @@ export function Sidebar({ isOpen, onNavigate }: SidebarProps) {
     >
       <div className="brand">
         <div className="brand__logo" aria-hidden="true">
-          <img src={lsaWhiteLogo} alt="" />
+          <img src={hackunionLogo} alt="" />
         </div>
         <p className="brand__name">
-          Lords Skill Academy
+          Developed by abdulvasay
           <span className="brand__short-name">LSA</span>
         </p>
       </div>

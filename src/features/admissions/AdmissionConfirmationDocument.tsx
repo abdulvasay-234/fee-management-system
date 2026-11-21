@@ -73,9 +73,9 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
         <section className="admission-confirmation-document__confirmation">
           <header className="admission-confirmation-document__header">
             <div className="admission-confirmation-document__brand">
-              <img src={lsaBlackLogo} alt="Lords Skill Academy" />
+              <img src={lsaBlackLogo} alt="Developed by abdulvasay" />
               <div>
-                <strong>LORDS SKILL ACADEMY</strong>
+                <strong>DEVELOPED BY ABDULVASAY</strong>
                 <span>An Initiative of Lords Institute of Engineering &amp; Technology</span>
               </div>
             </div>
@@ -90,7 +90,7 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
             <h1>ADMISSION CONFIRMATION</h1>
           </div>
           <p className="admission-confirmation-document__intro">
-            This confirms the student&apos;s admission to Lords Skill Academy under the program recorded below.
+            This confirms the student&apos;s admission under the program recorded below. Developed by abdulvasay.
           </p>
 
           <div className="admission-confirmation-document__details">
@@ -107,9 +107,9 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
           </div>
 
           <div className="admission-confirmation-document__official-signature" aria-label="Afnan, LSA official signature and academy seal">
-            <div className="admission-confirmation-document__seal" role="img" aria-label="Lords Skill Academy, Hyderabad">
-              <span>LORDS SKILL</span>
-              <span>ACADEMY</span>
+            <div className="admission-confirmation-document__seal" role="img" aria-label="Developed by abdulvasay, Hyderabad">
+              <span>DEVELOPED BY</span>
+              <span>ABDULVASAY</span>
               <span>HYDERABAD</span>
             </div>
             <div className="admission-confirmation-document__signature-copy">

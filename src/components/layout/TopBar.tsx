@@ -27,7 +27,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <Menu aria-hidden="true" size={20} />
         </Button>
         <div className="topbar__identity">
-          <span className="topbar__eyebrow">Lords Skill Academy</span>
+          <span className="topbar__eyebrow">Developed by abdulvasay</span>
           <p className="topbar__title">{currentPage.label}</p>
         </div>
       </div>

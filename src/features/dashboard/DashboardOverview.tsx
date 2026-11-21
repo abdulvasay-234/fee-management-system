@@ -118,8 +118,8 @@ export function DashboardOverview() {
 
       <DashboardSection title="LSA Quick Links">
         <div className="dashboard-official-links">
-          <article><div className="dashboard-official-links__icon"><BookOpen aria-hidden="true" size={20} /></div><div><h3>Explore Programs</h3><p>View the latest courses and programs offered by Lords Skill Academy.</p></div><a className="button button--secondary" href="https://lordsskillacademy.com/programs" target="_blank" rel="noopener noreferrer">Visit LSA Programs<ExternalLink aria-hidden="true" size={15} /></a></article>
-          <article><div className="dashboard-official-links__icon"><Award aria-hidden="true" size={20} /></div><div><h3>Download Certificate</h3><p>Find and download certificates issued by Lords Skill Academy.</p></div><a className="button button--secondary" href="https://lordsskillacademy.com/certificate" target="_blank" rel="noopener noreferrer">Download Certificate<ExternalLink aria-hidden="true" size={15} /></a></article>
+          <article><div className="dashboard-official-links__icon"><BookOpen aria-hidden="true" size={20} /></div><div><h3>Explore Programs</h3><p>Developed by abdulvasay - explore programs and courses.</p></div><a className="button button--secondary" href="https://lordsskillacademy.com/programs" target="_blank" rel="noopener noreferrer">Visit LSA Programs<ExternalLink aria-hidden="true" size={15} /></a></article>
+          <article><div className="dashboard-official-links__icon"><Award aria-hidden="true" size={20} /></div><div><h3>Download Certificate</h3><p>Find and download certificates - Developed by abdulvasay.</p></div><a className="button button--secondary" href="https://lordsskillacademy.com/certificates/" target="_blank" rel="noopener noreferrer">Download Certificate<ExternalLink aria-hidden="true" size={15} /></a></article>
         </div>
       </DashboardSection>
 

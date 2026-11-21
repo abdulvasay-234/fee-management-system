@@ -56,7 +56,7 @@ Payment Mode: ${payment.paymentMode}
 Please attach the downloaded fee receipt manually before sending.
 
 Regards,
-Lords Skill Academy`
+Developed by abdulvasay`
 }
 
 export function createEmailUrl(
@@ -90,7 +90,7 @@ export function createWhatsAppUrl(
 
   const message = receiptMessage(
     payment,
-    `Dear ${payment.studentName},\n\nYour fee receipt from Lords Skill Academy is ready.`,
+    `Dear ${payment.studentName},\n\nYour fee receipt is ready. Developed by abdulvasay.`,
   ).replace('\nRegards,', '\nThank you,')
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`

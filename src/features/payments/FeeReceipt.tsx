@@ -16,9 +16,9 @@ export const FeeReceipt = forwardRef<HTMLElement, FeeReceiptProps>(
       <article className="receipt-preview" ref={ref}>
         <header className="receipt-preview__header">
           <div className="receipt-preview__brand">
-            <img className="receipt-preview__logo" src={lsaWhiteLogo} alt="Lords Skill Academy" />
+            <img className="receipt-preview__logo" src={lsaWhiteLogo} alt="Developed by abdulvasay" />
             <div className="receipt-preview__brand-copy">
-              <span>Lords Skill Academy</span>
+              <span>Developed by abdulvasay</span>
               <address>
                 3rd floor Pillar No 4, KFC Building, 10-3-76, Mehdipatnam Rd,
                 Royal Colony, Humayun Nagar, Hyderabad, Telangana 500028
