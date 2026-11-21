@@ -3,15 +3,15 @@ import { useEffect, useRef } from 'react'
 import { Button } from '../components/ui/Button'
 import { useAuth } from './useAuth'
 
-const lsaLogo = `${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent-%20WHite.png`
+const hackunionLogo = 'https://vasay.github.io/HU-New/favicon/favicon.svg'
 
 export function AuthLoadingScreen() {
   return (
-    <main className="auth-screen auth-screen--loading">
+    <main className="auth-screen">
       <div className="auth-loading" role="status">
         <span className="auth-loading__mark" aria-hidden="true" />
         <strong>Checking application access</strong>
-        <p>Preparing the secure LSA workspace.</p>
+        <p>Preparing HackUnion workspace.</p>
       </div>
     </main>
   )
@@ -27,24 +27,24 @@ export function LoginScreen() {
 
   return (
     <main className="auth-screen">
-      <aside className="auth-brand" aria-label="Lords Skill Academy">
-        <img src={lsaLogo} alt="Lords Skill Academy" />
+      <aside className="auth-brand" aria-label="HackUnion">
+        <img src={hackunionLogo} alt="HackUnion" />
         <div>
-          <span>Internal workspace</span>
-          <h1>LSA Fee Management</h1>
-          <p>Admissions and fee operations for authorized academy staff.</p>
+          <span>HackUnion</span>
+          <h1>Fee Management</h1>
+          <p>Admin workspace for fee operations and admissions management.</p>
         </div>
       </aside>
       <section className="auth-content" aria-labelledby="login-title">
         <div className="auth-panel">
           <div className="auth-panel__icon" aria-hidden="true"><ShieldCheck size={24} /></div>
           <span className="auth-panel__eyebrow">Staff access only</span>
-          <h2 id="login-title">Continue to the LSA workspace</h2>
+          <h2 id="login-title">Continue to workspace</h2>
           <p>Sign in with your approved Google account to continue.</p>
           <div className="auth-google-button" ref={buttonRef} />
           <button className="auth-google-fallback" type="button" onClick={signIn}>Try Google Sign-In</button>
           {error && <p className="auth-message" role="alert">{error}</p>}
-          <small>Access is restricted to authorized LSA staff.</small>
+          <small>Design & Developed by Abdul Vasay</small>
         </div>
       </section>
     </main>
@@ -55,9 +55,9 @@ export function AccessDeniedScreen() {
   const { email, signOut } = useAuth()
   return (
     <main className="auth-screen">
-      <aside className="auth-brand" aria-label="Lords Skill Academy">
-        <img src={lsaLogo} alt="Lords Skill Academy" />
-        <div><span>Internal workspace</span><h1>LSA Fee Management</h1></div>
+      <aside className="auth-brand" aria-label="HackUnion">
+        <img src={hackunionLogo} alt="HackUnion" />
+        <div><span>HackUnion</span><h1>Fee Management</h1></div>
       </aside>
       <section className="auth-content" aria-labelledby="access-denied-title">
         <div className="auth-panel">
@@ -67,7 +67,7 @@ export function AccessDeniedScreen() {
           <p>Your Google account is not authorized to access this application.</p>
           {email && <div className="auth-account"><span>Signed in as</span><strong>{email}</strong></div>}
           <Button onClick={signOut}><LogOut aria-hidden="true" size={16} />Sign out / Try another account</Button>
-          <small>Contact the LSA administrator if you believe this is an error.</small>
+          <small>Design & Developed by Abdul Vasay</small>
         </div>
       </section>
     </main>
