@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { navigationItems } from '../../config/navigation'
 
-const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/HackUnion-Logo.png`
+const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/hackunion.jpg`
 
 interface SidebarProps {
   isOpen: boolean
