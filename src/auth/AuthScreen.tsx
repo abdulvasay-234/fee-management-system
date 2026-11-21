@@ -9,6 +9,7 @@ export function AuthLoadingScreen() {
   return (
     <main className="auth-screen">
       <div className="auth-loading" role="status">
+        <img src={hackunionLogo} alt="HackUnion" className="auth-loading__logo" />
         <span className="auth-loading__mark" aria-hidden="true" />
         <strong>Checking application access</strong>
         <p>Preparing HackUnion workspace.</p>

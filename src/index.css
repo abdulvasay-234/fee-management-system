@@ -1852,6 +1852,15 @@ select:focus-visible {
   text-align: center;
 }
 
+.auth-loading__logo {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  margin-bottom: var(--space-6);
+  filter: drop-shadow(0 0 20px rgba(255, 107, 53, 0.4)) drop-shadow(0 0 40px rgba(0, 212, 255, 0.2));
+  animation: float 3s ease-in-out infinite;
+}
+
 .auth-loading__mark {
   width: 34px;
   height: 34px;
