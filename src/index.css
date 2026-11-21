@@ -2338,7 +2338,7 @@ select:focus-visible {
   width: 100%;
   align-items: center;
   gap: var(--space-3);
-  padding: 12px var(--space-4);
+  padding: var(--space-3) var(--space-4);
   color: inherit;
   text-align: left;
   background: var(--color-surface-subtle);
@@ -2417,7 +2417,7 @@ select:focus-visible {
 .admission-section__fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px var(--space-4);
+  gap: var(--space-4);
   padding: var(--space-4);
 }
 
@@ -2453,37 +2453,46 @@ select:focus-visible {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: 0;
   margin: 0;
-  padding: var(--space-3);
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .admission-derived-fields > div {
   min-width: 0;
-  padding: 2px var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-right: none;
+}
+
+.admission-derived-fields > div:last-child {
+  border-right: 1px solid var(--color-border);
 }
 
 .admission-derived-fields > div + div {
-  border-left: 1px solid var(--color-border);
+  border-left: none;
 }
 
 .admission-derived-fields dt {
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
   color: var(--color-text-soft);
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .admission-derived-fields dd {
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--color-navy-800);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .admission-final-fee .field__control {
@@ -4754,10 +4763,21 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .admission-derived-fields > div {
+    border-right: 1px solid var(--color-border) !important;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--space-3);
+  }
+
+  .admission-derived-fields > div:last-child {
+    border-right: 1px solid var(--color-border);
+    border-bottom: none;
+  }
+
   .admission-derived-fields > div + div {
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border);
-    border-left: 0;
+    padding-top: var(--space-3);
+    border-top: none;
+    border-left: none;
   }
 
   .student-summary__grid,
