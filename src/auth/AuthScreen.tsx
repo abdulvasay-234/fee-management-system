@@ -76,17 +76,15 @@ export function AccessDeniedScreen() {
         </div>
 
         <div className="auth-welcome">
-          <h1 className="auth-welcome__heading">Access denied.</h1>
-          <p className="auth-welcome__text">This account is not authorized.</p>
+          <h1 className="auth-welcome__heading">Account not authorised.</h1>
+          <p className="auth-welcome__text">This Google account doesn't have access to LSA Connect.</p>
         </div>
 
         <div className="auth-card">
           <div className="auth-card__content">
-            <p className="auth-card__label">Account not approved</p>
-            <p className="auth-card__message">Your Google account is not authorized to access this application.</p>
             {email && (
               <div className="auth-card__account">
-                <span>Signed in as</span>
+                <span>Signed in with</span>
                 <strong>{email}</strong>
               </div>
             )}
@@ -94,6 +92,7 @@ export function AccessDeniedScreen() {
               <LogOut aria-hidden="true" size={16} />
               Sign out / Try another account
             </Button>
+            <p className="auth-card__support">Need access? Contact academy administration.</p>
           </div>
         </div>
 

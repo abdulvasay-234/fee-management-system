@@ -560,6 +560,14 @@
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
 }
 
+.auth-card__support {
+  margin: 0;
+  font-size: 13px;
+  color: #64768e;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .auth-google-button {
   width: 100%;
   min-height: 52px;
