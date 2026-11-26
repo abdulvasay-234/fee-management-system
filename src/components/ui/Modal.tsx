@@ -31,8 +31,15 @@ export function Modal({
       if (event.key === 'Escape') onClose()
     }
 
+    // Lock body scroll when modal is open
+    const originalOverflow = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.documentElement.style.overflow = originalOverflow
+    }
   }, [onClose, open])
 
   if (!open) return null
