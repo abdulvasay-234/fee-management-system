@@ -3,6 +3,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Input, Select, Textarea } from '../../components/ui'
 import { createFollowUp, updateFollowUp } from '../../services/api'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 import {
   contactMethodOptions,
   followUpStatusOptions,
@@ -29,7 +30,7 @@ function DetailGroup({ title, values }: { title: string; values: Array<{ label: 
       <h3>{title}</h3>
       <dl className="visitor-detail-grid">
         {values.map(({ label, value }) => (
-          <div key={label}><dt>{label}</dt><dd>{value || 'Not provided'}</dd></div>
+          <div key={label}><dt>{label}</dt><dd>{label === 'Interested Course' ? <CourseLabel name={value} /> : value || 'Not provided'}</dd></div>
         ))}
       </dl>
     </section>
@@ -104,7 +105,7 @@ export function VisitorDetailsModal({
           <div>
             <span>Visitor record</span>
             <h2 id="visitor-detail-title">{visitor.fullName}</h2>
-            <p>{visitor.visitorId} · {visitor.courseInterestedIn}</p>
+            <p>{visitor.visitorId} · <CourseLabel name={visitor.courseInterestedIn} /></p>
           </div>
           <Button variant="secondary" iconOnly aria-label="Close visitor details" onClick={onClose}><X aria-hidden="true" size={18} /></Button>
         </header>

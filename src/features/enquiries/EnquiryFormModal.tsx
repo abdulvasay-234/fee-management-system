@@ -10,6 +10,7 @@ import {
 } from '../../config/enquiryOptions'
 import { getSpecializationOptions } from '../../config/educationOptions'
 import { createEnquiry, fetchCourseCodes, updateEnquiry, type CourseCode, type EnquiryPayload, type EnquiryRecord } from '../../services/api'
+import { CourseDot } from '../courseCodes/CourseLabel'
 
 interface EnquiryFormModalProps {
   enquiry: EnquiryRecord | null
@@ -120,6 +121,7 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
     value: course.courseName,
     label: course.courseName,
     description: `${course.code} · ${course.type}`,
+    leadingAdornment: <CourseDot name={course.courseName} code={course.code} />,
   }))
   const selectedCourse = courses.find((course) => course.courseName === form.courseInterestedIn)
   const isOtherProgramSelected = selectedCourse?.code === '00' || form.courseInterestedIn.trim().toLowerCase() === 'other programs'

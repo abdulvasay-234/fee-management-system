@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const modulePath = fileURLToPath(new URL('../../src/features/students/studentDirectoryUtils.ts', import.meta.url))
-const { summarizeAdmissions, courseNavigation, batchNavigation, filterAdmissions } = await import(modulePath)
+const { summarizeAdmissions, courseNavigation, batchNavigation, filterAdmissions, formatAdmissionFeeStatus } = await import(modulePath)
 
 const students = [
   { studentId: 'A001', fullName: 'Anita Rao', mobileNumber: '9876543210', email: 'anita@example.test', course: 'Data Science', batch: '01', enrollmentYear: '2025', admissionDate: '2026-02-28' },
@@ -11,6 +11,16 @@ const students = [
 ]
 
 describe('admissions directory', () => {
+  it('shows the recorded pending due or paid without treating missing balances as paid', () => {
+    expect(formatAdmissionFeeStatus(12000.50)).toBe('Pending Due: ₹12,000.50')
+    expect(formatAdmissionFeeStatus(0.01)).toBe('Pending Due: ₹0.01')
+    expect(formatAdmissionFeeStatus(0)).toBe('Paid')
+    expect(formatAdmissionFeeStatus(-50)).toBe('Paid')
+    expect(formatAdmissionFeeStatus(undefined)).toBe('Unavailable')
+    expect(formatAdmissionFeeStatus(NaN)).toBe('Unavailable')
+    expect(formatAdmissionFeeStatus(Infinity)).toBe('Unavailable')
+  })
+
   it('counts unique admissions by their local calendar admission date', () => {
     expect(summarizeAdmissions(students, new Date(2026, 1, 28, 23, 30))).toEqual({
       totalStudents: 3,

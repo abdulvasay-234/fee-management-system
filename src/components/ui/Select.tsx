@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import type { SelectHTMLAttributes } from 'react'
+import type { ReactNode, SelectHTMLAttributes } from 'react'
 
 interface SelectOption {
   label: string
@@ -11,6 +11,7 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: string
   hint?: string
   label: string
+  leadingAdornment?: ReactNode
   options: SelectOption[]
 }
 
@@ -20,6 +21,7 @@ export function Select({
   hint,
   id,
   label,
+  leadingAdornment,
   options,
   className = '',
   required,
@@ -34,7 +36,8 @@ export function Select({
         {label}
         {required && <span className="field__required" aria-hidden="true">*</span>}
       </label>
-      <span className="field__select-wrap">
+      <span className={`field__select-wrap${leadingAdornment ? ' field__select-wrap--adorned' : ''}`}>
+        {leadingAdornment && <span className="field__select-adornment">{leadingAdornment}</span>}
         <select
           aria-describedby={error || hint ? messageId : undefined}
           aria-invalid={Boolean(error)}

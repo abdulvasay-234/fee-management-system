@@ -29,6 +29,7 @@ import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot } from '../workflow/workflowTypes'
 import { getCachedCourseCodes, getCourseCodeServiceStatus, getCourseCodes } from '../courseCodes/courseCodeService'
 import type { CourseCode } from '../courseCodes/courseCodeTypes'
+import { CourseDot, CourseLabel } from '../courseCodes/CourseLabel'
 import { courseDurationOptions, genderOptions, yearOfPassingOptions } from './admissionOptions'
 import {
   calculateFinalFee,
@@ -207,6 +208,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     value: course.name,
     label: course.name,
     description: `${course.code} · ${course.type}`,
+    leadingAdornment: <CourseDot name={course.name} code={course.code} />,
   }))
   const courseLoadMessage = courseLoadError || (courseCodes.length > 0 && activeCourses.length === 0 ? 'No active regular courses are available.' : '')
 
@@ -637,7 +639,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
                 <div><dt>Mobile</dt><dd>{enquiry.mobileNumber}</dd></div>
                 <div><dt>Education Level</dt><dd>{enquiry.educationLevel || enquiry.degreeCourse || 'Not provided'}</dd></div>
                 <div><dt>Specialization</dt><dd>{enquiry.specialization || 'Not provided'}</dd></div>
-                <div><dt>Course Interested In</dt><dd>{enquiry.courseInterestedIn}</dd></div>
+                <div><dt>Course Interested In</dt><dd><CourseLabel name={enquiry.courseInterestedIn} /></dd></div>
                 {enquiry.otherProgramDetails && <div><dt>Other Program Details</dt><dd>{enquiry.otherProgramDetails}</dd></div>}
               </dl>
             </section>}
@@ -684,7 +686,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
             <dl className="admission-preview__grid">
               <div><dt>Admission number</dt><dd>{preview.admissionNumber}</dd></div>
               <div><dt>Student name</dt><dd>{preview.studentName}</dd></div>
-              <div><dt>Course</dt><dd>{preview.course}</dd></div>
+              <div><dt>Course</dt><dd><CourseLabel name={preview.course} /></dd></div>
               <div><dt>Batch number</dt><dd>{preview.batchNumber}</dd></div>
               <div><dt>Start time</dt><dd>{formatTime(preview.startTime)}</dd></div>
               <div><dt>End time</dt><dd>{formatTime(preview.endTime)}</dd></div>

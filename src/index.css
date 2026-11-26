@@ -5037,6 +5037,7 @@ select:focus-visible {
 
 .students-table td:nth-child(2),
 .students-table td:nth-child(4),
+.students-table td:nth-child(6),
 .students-table td:nth-child(7) {
   white-space: normal;
 }
@@ -5279,7 +5280,7 @@ select:focus-visible {
 
 .payment-summary-cards {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(0, 1fr);
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -5380,6 +5381,87 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.course-label.course-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--course-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: left;
+  text-transform: none;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.course-label--badge.course-label {
+  padding: 3px 8px;
+  background: var(--course-background);
+  border: 1px solid var(--course-border);
+  border-radius: var(--radius-sm);
+}
+
+.course-label .course-label__name {
+  display: inline;
+  min-width: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+  text-transform: none;
+}
+
+.course-dot.course-dot {
+  display: inline-block;
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  background: var(--course-foreground);
+  border-radius: 50%;
+}
+
+.student-course-nav__item--active .course-label {
+  color: inherit;
+}
+
+.student-course-nav__item--active .course-dot {
+  background: var(--course-border);
+}
+
+.field__select-adornment {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 12px;
+  display: inline-flex;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.field__select-wrap--adorned .field__select,
+.searchable-select__control--adorned .searchable-select__input {
+  padding-left: 30px;
+}
+
+.searchable-select__option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media print {
+  .course-label,
+  .course-dot {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
 .payments-filters {
   display: grid;
   gap: var(--space-4);
@@ -5400,9 +5482,29 @@ select:focus-visible {
 
 .payments-filters__options {
   display: grid;
-  grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(130px, 1fr)) auto;
   align-items: end;
   gap: var(--space-3);
+}
+
+.payments-filters__options--students {
+  grid-template-columns: repeat(2, minmax(130px, 1fr)) auto;
+}
+
+.payments-view-nav,
+.payments-status-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.payments-view-nav {
+  margin-bottom: var(--space-4);
+}
+
+.payments-view-nav > .button {
+  margin-left: auto;
 }
 
 .payments-results-heading {
@@ -5422,7 +5524,22 @@ select:focus-visible {
 }
 
 .payments-table {
-  min-width: 1580px;
+  min-width: 1100px;
+}
+
+.payment-fees-table {
+  min-width: 1150px;
+}
+
+.payment-fees-table td {
+  white-space: nowrap;
+}
+
+.payment-fees-table td:nth-child(2),
+.payment-fees-table td:nth-child(3),
+.payment-fees-table td:nth-child(4),
+.payment-fees-table td:nth-child(8) {
+  white-space: normal;
 }
 
 .payments-table td {
@@ -5441,6 +5558,7 @@ select:focus-visible {
 
 .payments-table__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
 }
 
@@ -5453,9 +5571,15 @@ select:focus-visible {
 .payments-pagination {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
   margin-top: var(--space-4);
+}
+
+.payments-pagination span {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .payments-pagination .button {
@@ -5918,6 +6042,52 @@ select:focus-visible {
   .payments-filters__search-sort,
   .payments-filters__options {
     grid-template-columns: 1fr;
+  }
+
+  .payment-directory-table,
+  .payment-directory-table tbody,
+  .payment-directory-table tr {
+    display: block;
+    min-width: 0;
+  }
+
+  .payment-directory-table thead {
+    display: none;
+  }
+
+  .payment-directory-table tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .payment-directory-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .payment-directory-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 6px var(--space-3);
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .payment-directory-table td::before {
+    flex: 0 0 100px;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+    content: attr(data-label);
+  }
+
+  .payments-table__actions {
+    justify-content: flex-end;
   }
 
   .payments-filters__options .button {

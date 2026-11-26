@@ -17,6 +17,7 @@ import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
 import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
 import { createPaymentAcknowledgementUrl } from './receiptActions'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 interface PaymentFormData {
   amountPaid: string
@@ -61,7 +62,7 @@ function StudentSummary({ admission }: { admission: AdmissionSnapshot }) {
       <dl className="student-summary__grid">
         <div><dt>Student</dt><dd>{admission.studentName}</dd></div>
         <div><dt>Admission Number</dt><dd>{admission.admissionNumber}</dd></div>
-        <div><dt>Course</dt><dd>{admission.course}</dd></div>
+        <div><dt>Course</dt><dd><CourseLabel name={admission.course} /></dd></div>
         <div><dt>Batch</dt><dd>{admission.batchNumber}</dd></div>
         <div><dt>Enrollment</dt><dd>{admission.enrollmentMonth} {admission.enrollmentYear}</dd></div>
         <div><dt>Course Fee</dt><dd>{formatCurrency(admission.finalFee)}</dd></div>
@@ -106,7 +107,7 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
         </form>
       </Card>
       {error && <p className="receipt-actions__error" role="alert">{error}</p>}
-      {students.map((student) => <Card className="student-lookup__result" key={student.studentId}><div><strong>{student.fullName}</strong><span>{student.studentId} · {student.course} · Batch {student.batch}</span></div><Button onClick={() => onSelect(student)}>Select Student</Button></Card>)}
+      {students.map((student) => <Card className="student-lookup__result" key={student.studentId}><div><strong>{student.fullName}</strong><span>{student.studentId} · <CourseLabel name={student.course} /> · Batch {student.batch}</span></div><Button onClick={() => onSelect(student)}>Select Student</Button></Card>)}
     </section>
   )
 }
@@ -268,7 +269,7 @@ function PaymentSuccess({
       <dl className="student-summary__grid">
         <div><dt>Student</dt><dd>{admission.studentName}</dd></div>
         <div><dt>Admission Number</dt><dd>{admission.admissionNumber}</dd></div>
-        <div><dt>Course</dt><dd>{admission.course}</dd></div>
+        <div><dt>Course</dt><dd><CourseLabel name={admission.course} /></dd></div>
         <div><dt>Final Fee</dt><dd>{formatCurrency(admission.finalFee)}</dd></div>
         <div><dt>Previous Paid</dt><dd>{formatCurrency(payment.previousPaid)}</dd></div>
         <div><dt>Current Payment</dt><dd>{formatCurrency(payment.amountPaid)}</dd></div>

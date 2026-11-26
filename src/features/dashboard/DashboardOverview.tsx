@@ -14,6 +14,7 @@ import { Button, Card, EmptyState } from '../../components/ui'
 import { fetchDashboard, type DashboardData, fetchEnquiries } from '../../services/api'
 import { formatReceiptCurrency, formatReceiptDate } from '../payments/receiptActions'
 import { isToday } from './dashboardUtils'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 function KPICard({
   icon,
@@ -62,7 +63,7 @@ function ActivityItem({
         </div>
         <div className="dashboard-activity-item__details">
           <span>{primaryText}</span>
-          <span>{secondaryText}</span>
+          <CourseLabel name={secondaryText} />
           <span>{tertiaryText}</span>
         </div>
       </div>

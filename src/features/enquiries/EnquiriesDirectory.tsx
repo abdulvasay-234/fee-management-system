@@ -5,6 +5,7 @@ import { Badge, Button, Card, EmptyState, Input, Select, Table } from '../../com
 import { fetchEnquiries, type ConvertEnquiryResponse, type EnquiryRecord } from '../../services/api'
 import { EnquiryConversionModal } from './EnquiryConversionModal'
 import { EnquiryFormModal } from './EnquiryFormModal'
+import { CourseLabel, CourseSelect } from '../courseCodes/CourseLabel'
 import {
   isToday,
   getTodayString,
@@ -283,7 +284,7 @@ export function EnquiriesDirectory() {
         <div className="enquiries-filters__grid">
           <Input id="enquiries-search" label="Search" placeholder="Name, mobile, email, college, course" value={query} onChange={(event) => setQuery(event.target.value)} />
           <Select id="enquiries-status" label="Status" options={statusOptions} value={status} onChange={(event) => setStatus(event.target.value)} />
-          <Select id="enquiries-course" label="Course" options={courseOptions} value={course} onChange={(event) => setCourse(event.target.value)} />
+          <CourseSelect id="enquiries-course" label="Course" options={courseOptions} value={course} onChange={(event) => setCourse(event.target.value)} />
           <Input id="enquiries-from" label="From" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           <Input id="enquiries-to" label="To" type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
           <div className="enquiries-filters__actions">
@@ -345,7 +346,7 @@ export function EnquiriesDirectory() {
                           <td>{item.mobileNumber}</td>
                           <td className="enquiries-table__email">{item.email || '-'}</td>
                           <td>{item.educationLevel || item.degreeCourse || '-'}</td>
-                          <td>{item.courseInterestedIn}</td>
+                          <td><CourseLabel name={item.courseInterestedIn} /></td>
                           <td>{item.college || '-'}</td>
                           <td><Badge variant={statusVariant(item.status)}>{item.status}</Badge></td>
                           <td>
@@ -401,7 +402,7 @@ export function EnquiriesDirectory() {
                 </div>
                 {expandedGroups.has(group.date) && group.enquiries.map((item) => (
                   <Card className="enquiries-mobile-item" key={item.enquiryId}>
-                    <div className="enquiries-mobile-item__heading"><div><strong>{item.fullName}</strong><span>{item.courseInterestedIn}</span></div><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div>
+                    <div className="enquiries-mobile-item__heading"><div><strong>{item.fullName}</strong><CourseLabel name={item.courseInterestedIn} /></div><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div>
                     <dl>
                       <div><dt>Mobile</dt><dd>{item.mobileNumber}</dd></div><div><dt>Email</dt><dd>{item.email || '-'}</dd></div><div><dt>Education Level</dt><dd>{item.educationLevel || item.degreeCourse || '-'}</dd></div><div><dt>College</dt><dd>{item.college || '-'}</dd></div>{item.admissionId && <div><dt>Admission ID</dt><dd>{item.admissionId}</dd></div>}
                     </dl>

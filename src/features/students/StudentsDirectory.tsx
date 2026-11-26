@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Button, Card, EmptyState, Input, Select, Table } from '../../components/ui'
+import { Badge, Button, Card, EmptyState, Input, Select, Table } from '../../components/ui'
 import { fetchStudent, fetchStudents, type PaymentRecord as ApiPaymentRecord, type StudentRecord } from '../../services/api'
 import { getCachedCourseCodes, getCourseCodeServiceStatus, getCourseCodes, subscribeToCourseCodes } from '../courseCodes/courseCodeService'
 import type { PaymentRecord } from '../workflow/workflowTypes'
@@ -18,7 +18,8 @@ import { useWorkflow } from '../workflow/useWorkflow'
 import { StudentDetailsModal } from './StudentDetailsModal'
 import { toPaymentSnapshot } from './studentWorkflow'
 import type { Student } from './studentTypes'
-import { batchNavigation, courseKey, courseNavigation, filterAdmissions, summarizeAdmissions, type StudentFilters } from './studentDirectoryUtils'
+import { batchNavigation, courseKey, courseNavigation, filterAdmissions, formatAdmissionFeeStatus, summarizeAdmissions, type StudentFilters } from './studentDirectoryUtils'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 const emptyFilters: StudentFilters = {
   query: '',
@@ -139,6 +140,7 @@ export function StudentsDirectory() {
   const batchOptions = batchNavigation(students, selectedCourse)
   const yearOptions = optionList(students.map((student) => student.enrollmentYear), 'All Years')
   const filteredStudents = filterAdmissions(students, filters, selectedCourse, selectedBatch)
+  const unavailableBalances = filteredStudents.filter((student) => formatAdmissionFeeStatus(student.balance) === 'Unavailable').length
 
   function selectCourse(course: string) {
     setSelectedCourse(course)
@@ -190,7 +192,7 @@ export function StudentsDirectory() {
             {isLoading ? <small>Loading courses…</small> : loadError ? <small>Unavailable</small> : summary.courses.length ? (
               <>
                 <ul className={summary.courses.length > 4 ? 'student-course-summary__list--scrollable' : undefined} tabIndex={summary.courses.length > 4 ? 0 : undefined} aria-label="Admissions by course">
-                  {summary.courses.map((course) => <li key={courseKey(course.name)}><span>{course.name}</span><strong>{course.count}</strong></li>)}
+                  {summary.courses.map((course) => <li key={courseKey(course.name)}><CourseLabel name={course.name} variant="inline" /><strong>{course.count}</strong></li>)}
                 </ul>
                 {summary.courses.length > 4 && <small>Scroll for more courses</small>}
               </>
@@ -206,7 +208,7 @@ export function StudentsDirectory() {
           <button type="button" className={`student-course-nav__item${!selectedCourse ? ' student-course-nav__item--active' : ''}`} aria-pressed={!selectedCourse} onClick={() => selectCourse('')}>All Courses</button>
           {courseOptions.map((course) => (
             <button type="button" key={courseKey(course.name)} className={`student-course-nav__item${courseKey(selectedCourse) === courseKey(course.name) ? ' student-course-nav__item--active' : ''}`} aria-pressed={courseKey(selectedCourse) === courseKey(course.name)} onClick={() => selectCourse(course.name)}>
-              {course.name}{course.active === false && <small>Inactive</small>}
+              <CourseLabel name={course.name} variant="inline" />{course.active === false && <small>Inactive</small>}
             </button>
           ))}
         </div>
@@ -249,6 +251,7 @@ export function StudentsDirectory() {
         <div><h2>Registered students</h2><p>{isLoading ? 'Loading records…' : loadError ? 'Records unavailable' : `${filteredStudents.length} records shown · ${selectedCourse || 'All Courses'}${selectedCourse ? ` · ${selectedBatch ? `Batch ${selectedBatch}` : 'All Batches'}` : ''}`}</p><p>Enrollment status is not tracked.</p></div>
       </div>
       {detailsError && <p className="student-course-nav__notice" role="alert">{detailsError}</p>}
+      {!isLoading && !loadError && unavailableBalances > 0 && <p className="student-course-nav__notice" role="alert">Fee status unavailable for {unavailableBalances} admission{unavailableBalances === 1 ? '' : 's'} because the recorded balance is missing or invalid. Please reconcile the financial records.</p>}
 
       {isLoading ? <EmptyState title="Loading students" description="Fetching student records from the LSA Admin API." /> : loadError ? <EmptyState title="Unable to load students" description={loadError} /> : filteredStudents.length > 0 ? (
         <Table className="students-table">
@@ -259,26 +262,29 @@ export function StudentsDirectory() {
               <th>Mobile Number</th>
               <th>Course</th>
               <th>Batch</th>
-              <th>Admission Date</th>
+              <th>Fee Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredStudents.map((student) => (
-              <tr key={student.studentId}>
-                <td data-label="Admission Number"><strong>{student.studentId}</strong></td>
-                <td data-label="Student"><div><strong>{student.fullName}</strong><small className="students-table__secondary">{student.email || 'Email not provided'}</small></div></td>
-                <td data-label="Mobile Number">{student.mobileNumber}</td>
-                <td data-label="Course">{student.course}</td>
-                <td data-label="Batch">{student.batch}</td>
-                <td data-label="Admission Date">{student.admissionDate}</td>
-                <td data-label="Actions">
-                  <div className="students-table__actions">
-                    <Button variant="secondary" disabled={detailsLoadingId === student.studentId} onClick={() => void viewStudent(student)}><Eye aria-hidden="true" size={14} />{detailsLoadingId === student.studentId ? 'Loading…' : 'View Admission'}</Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {filteredStudents.map((student) => {
+              const feeStatus = formatAdmissionFeeStatus(student.balance)
+              return (
+                <tr key={student.studentId}>
+                  <td data-label="Admission Number"><strong>{student.studentId}</strong></td>
+                  <td data-label="Student"><div><strong>{student.fullName}</strong><small className="students-table__secondary">{student.email || 'Email not provided'}</small></div></td>
+                  <td data-label="Mobile Number">{student.mobileNumber}</td>
+                  <td data-label="Course"><CourseLabel name={student.course} /></td>
+                  <td data-label="Batch">{student.batch}</td>
+                  <td data-label="Fee Status"><Badge variant={feeStatus === 'Paid' ? 'navy' : feeStatus === 'Unavailable' ? 'neutral' : 'red'}>{feeStatus}</Badge></td>
+                  <td data-label="Actions">
+                    <div className="students-table__actions">
+                      <Button variant="secondary" disabled={detailsLoadingId === student.studentId} onClick={() => void viewStudent(student)}><Eye aria-hidden="true" size={14} />{detailsLoadingId === student.studentId ? 'Loading…' : 'View Admission'}</Button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </Table>
       ) : (

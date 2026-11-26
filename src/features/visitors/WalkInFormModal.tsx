@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Button, Input, Modal, Select, Textarea } from '../../components/ui'
 import { createWalkIn, updateWalkIn } from '../../services/api'
+import { CourseSelect } from '../courseCodes/CourseLabel'
 import {
   emptyVisitorForm,
   followUpRequiredOptions,
@@ -89,7 +90,7 @@ export function WalkInFormModal({ courseOptions, onClose, onSaved, visitor = nul
           <Input id="visitor-college" name="college" label="College" placeholder="College or organisation" value={form.college} onChange={handleInputChange} />
           <Input id="visitor-degree" name="degreeCourse" label="Degree / Course" placeholder="Current degree or course" value={form.degreeCourse} onChange={handleInputChange} />
           <Input id="visitor-graduation" name="yearOfGraduation" label="Year of Graduation" placeholder="YYYY" inputMode="numeric" value={form.yearOfGraduation} onChange={handleInputChange} error={errors.yearOfGraduation} />
-          <Select id="visitor-course" name="courseInterestedIn" label="Course Interested In" options={courseSelectOptions} value={form.courseInterestedIn} onChange={handleInputChange} error={errors.courseInterestedIn} required />
+          <CourseSelect id="visitor-course" name="courseInterestedIn" label="Course Interested In" options={courseSelectOptions} value={form.courseInterestedIn} onChange={handleInputChange} error={errors.courseInterestedIn} required />
           {isOtherCourse && <Input id="visitor-other-course" name="otherCourse" label="Other Course" placeholder="Enter course name" value={form.otherCourse} onChange={handleInputChange} error={errors.otherCourse} required />}
           <Select id="visitor-referral" name="referral" label="Referral" options={referralOptions} value={form.referral} onChange={handleInputChange} error={errors.referral} required />
           {isOtherReferral && <Input id="visitor-other-referral" name="otherReferral" label="Other Referral" placeholder="Enter referral source" value={form.otherReferral} onChange={handleInputChange} error={errors.otherReferral} required />}

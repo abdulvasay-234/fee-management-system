@@ -24,6 +24,14 @@ npm run build
 npm run lint
 ```
 
+## Course colours
+
+Course labels use automatic colours derived from immutable catalog course codes,
+consistently across directories, course navigation, forms, details, and documents.
+Renaming or reordering catalog courses does not change their colours. Historical
+courses absent from the catalog use a normalized name-based colour. Course names
+remain visible; colour is an additional cue, not a status or a filter.
+
 ## Financial records
 
 The admission stores the agreed course fee and discount; the final fee is the
@@ -33,8 +41,25 @@ printed on historical receipts. A negative student balance represents an
 overpayment; it does not offset another student's outstanding balance.
 
 The Payments overview separates payments received from total final fees.
-Course breakdowns show final fee obligations for all admissions and positive
-outstanding admission balances, including courses with no recorded payments.
+The Total Amount card highlights total final fees, with the amount received
+shown underneath in smaller text.
+Course breakdowns show final fee obligations and positive outstanding balances
+for matching admissions, including courses with no recorded payments.
+
+Payments opens in Student Fee Status, including admissions with no receipts.
+Course and batch navigation combine with enrollment year/month, search, and
+current Pending/Paid filters; Paid includes zero and negative balances.
+Batch codes can be reused across years, so use the enrollment period to isolate
+older cohorts. Refresh reloads the current admissions and payment records.
+
+Summary cards follow the filtered view. Student Fee Status totals the selected
+admissions and their linked receipts. Payment History totals matching receipts;
+fee obligations and current outstanding amounts count each represented admission
+once, regardless of the number of matching receipts. Payment date/month filters
+apply only to history. Receipt running totals remain available in View Receipt;
+Pending/Paid filters always use current admission balances, not historical receipt
+balances. Receipts without a linked admission remain accessible in history and
+are excluded from student fee totals and Pending/Paid filters.
 
 The Admissions directory and its course breakdown count unique admission IDs
 rather than unique people, including historical admissions.
@@ -42,6 +67,9 @@ Admission date totals use the browser's local calendar date. Course filters
 include active catalog courses and courses found in historical admissions;
 batch navigation is derived from the selected course's admission records.
 Enrollment and batch activity statuses are not currently tracked.
+The Admissions directory shows the recorded pending due balance, or Paid when
+the balance is zero or negative. Missing or invalid balances show Unavailable.
+Batch timings and admission dates remain available in student records.
 
 After a payment is recorded, staff can open a prefilled WhatsApp acknowledgement
 for the student's mobile number. It suggests a next payment date 20 days later

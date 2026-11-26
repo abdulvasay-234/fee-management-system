@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { Button } from '../../components/ui'
 import type { Student } from '../students/studentTypes'
 import type { PaymentRecord } from '../workflow/workflowTypes'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -15,7 +16,7 @@ interface PaymentDetailsModalProps {
   onMakePayment: (student: Student) => void
   onViewStudent: (student: Student) => void
   payment: PaymentRecord
-  student: Student
+  student?: Student
 }
 
 function DetailSection({
@@ -30,7 +31,7 @@ function DetailSection({
       <h3>{title}</h3>
       <dl className="payment-detail-grid">
         {values.map(({ label, value }) => (
-          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+          <div key={label}><dt>{label}</dt><dd>{label === 'Course' ? <CourseLabel name={value} /> : value}</dd></div>
         ))}
       </dl>
     </section>
@@ -97,7 +98,7 @@ export function PaymentDetailsModal({
           <DetailSection
             title="Fee Summary"
             values={[
-              { label: 'Final Course Fee', value: currencyFormatter.format(student.finalFee) },
+              { label: 'Final Course Fee', value: student ? currencyFormatter.format(student.finalFee) : 'Unavailable: admission not linked' },
               { label: 'Previous Paid', value: currencyFormatter.format(payment.previousPaid) },
               { label: 'Amount Paid', value: currencyFormatter.format(payment.amountPaid) },
               { label: 'Total Paid', value: currencyFormatter.format(payment.totalPaid) },
@@ -111,10 +112,10 @@ export function PaymentDetailsModal({
             </section>
           )}
         </div>
-        <footer className="payment-detail-modal__footer">
+        {student && <footer className="payment-detail-modal__footer">
           <Button variant="secondary" onClick={() => onViewStudent(student)}><UserRound aria-hidden="true" size={15} />View Student</Button>
           <Button onClick={() => onMakePayment(student)}><Banknote aria-hidden="true" size={15} />Make Another Payment</Button>
-        </footer>
+        </footer>}
       </section>
     </div>
   )

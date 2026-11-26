@@ -8,6 +8,7 @@ import { createAdmissionConfirmationData, type AdmissionConfirmationData } from 
 import { AdmissionConfirmationDocumentModal } from '../admissions/AdmissionConfirmationDocumentModal'
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import type { Student } from './studentTypes'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -35,7 +36,7 @@ function DetailGroup({
         {values.map(({ label, value }) => (
           <div key={label}>
             <dt>{label}</dt>
-            <dd>{value || 'Not provided'}</dd>
+            <dd>{label === 'Course' ? <CourseLabel name={value} /> : value || 'Not provided'}</dd>
           </div>
         ))}
       </dl>
@@ -103,7 +104,7 @@ export function StudentDetailsModal({
           <div>
             <span>Student record</span>
             <h2 id="student-detail-title">{student.fullName}</h2>
-            <p>{student.studentId} · {student.course}</p>
+            <p>{student.studentId} · <CourseLabel name={student.course} /></p>
           </div>
           <div className="student-detail-modal__header-actions">
             <Button variant="secondary" onClick={() => void viewAdmissionDocument()} disabled={isLoadingAdmissionDocument}>

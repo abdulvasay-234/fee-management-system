@@ -1,9 +1,10 @@
 import { ChevronDown } from 'lucide-react'
 import { createPortal } from 'react-dom'
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 export interface SearchableSelectOption {
   description?: string
+  leadingAdornment?: ReactNode
   label: string
   value: string
 }
@@ -160,7 +161,7 @@ export function SearchableSelect({
             role="option"
             type="button"
           >
-            <span>{option.label}</span>
+            <span className="searchable-select__option-label">{option.leadingAdornment}{option.label}</span>
             {option.description && <small>{option.description}</small>}
           </button>
         </li>
@@ -175,7 +176,8 @@ export function SearchableSelect({
           {label}
           {required && <span className="field__required" aria-hidden="true">*</span>}
         </label>
-        <div className="searchable-select__control" ref={controlRef}>
+        <div className={`searchable-select__control${selected?.leadingAdornment ? ' searchable-select__control--adorned' : ''}`} ref={controlRef}>
+          {selected?.leadingAdornment && <span className="field__select-adornment">{selected.leadingAdornment}</span>}
           <input
             ref={inputRef}
             aria-activedescendant={isOpen && filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}

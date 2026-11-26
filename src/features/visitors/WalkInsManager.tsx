@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Card, EmptyState, Input, Select, Table } from '../../components/ui'
 import { fetchFollowUps, fetchWalkIns, markWalkInExit, type FollowUpRecord, type VisitorRecord } from '../../services/api'
 import { getCourseCodes } from '../courseCodes/courseCodeService'
+import { CourseLabel, CourseSelect } from '../courseCodes/CourseLabel'
 import { WalkInFormModal } from './WalkInFormModal'
 import { VisitorDetailsModal } from './VisitorDetailsModal'
 import { formatVisitorDate, formatVisitorTime } from './visitorTypes'
@@ -175,7 +176,7 @@ export function WalkInsManager() {
         <div className="visitor-filters__grid">
           <Input id="visitor-search" label="Search" placeholder="Name, phone, or visitor ID" value={query} onChange={(event) => setQuery(event.target.value)} />
           <Input id="visitor-date-filter" label="Visit Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          <Select id="visitor-course-filter" label="Course" options={courseFilterOptions} value={course} onChange={(event) => setCourse(event.target.value)} />
+          <CourseSelect id="visitor-course-filter" label="Course" options={courseFilterOptions} value={course} onChange={(event) => setCourse(event.target.value)} />
           <Select id="visitor-status-filter" label="Visit Status" options={statusOptions} value={status} onChange={(event) => setStatus(event.target.value)} />
           <Select id="visitor-conversion-filter" label="Conversion" options={conversionOptions} value={conversion} onChange={(event) => setConversion(event.target.value)} />
           <div className="visitor-filters__actions">
@@ -203,7 +204,7 @@ export function WalkInsManager() {
                   <td><strong>{visitor.visitorId}</strong></td>
                   <td><strong>{visitor.fullName}</strong></td>
                   <td>{visitor.mobileNumber}</td>
-                  <td>{visitor.otherCourse || visitor.courseInterestedIn}</td>
+                  <td><CourseLabel name={visitor.otherCourse || visitor.courseInterestedIn} /></td>
                   <td>{formatVisitorDate(visitor.visitDate)}</td>
                   <td>{formatVisitorTime(visitor.entryTime)}</td>
                   <td>{formatVisitorTime(visitor.exitTime)}</td>
@@ -219,7 +220,7 @@ export function WalkInsManager() {
             {filteredVisitors.map((visitor) => (
               <Card className="visitor-mobile-card" key={visitor.visitorId}>
                 <div className="visitor-mobile-card__heading"><div><strong>{visitor.fullName}</strong><span>{visitor.visitorId}</span></div><Badge variant={statusVariant(visitor.visitStatus)}>{visitor.visitStatus}</Badge></div>
-                <dl><div><dt>Phone</dt><dd>{visitor.mobileNumber}</dd></div><div><dt>Course</dt><dd>{visitor.otherCourse || visitor.courseInterestedIn}</dd></div><div><dt>Visit Date</dt><dd>{formatVisitorDate(visitor.visitDate)}</dd></div><div><dt>Follow-up</dt><dd>{visitor.followUpRequired === 'Yes' ? 'Required' : 'No'}</dd></div></dl>
+                <dl><div><dt>Phone</dt><dd>{visitor.mobileNumber}</dd></div><div><dt>Course</dt><dd><CourseLabel name={visitor.otherCourse || visitor.courseInterestedIn} /></dd></div><div><dt>Visit Date</dt><dd>{formatVisitorDate(visitor.visitDate)}</dd></div><div><dt>Follow-up</dt><dd>{visitor.followUpRequired === 'Yes' ? 'Required' : 'No'}</dd></div></dl>
                 <div className="visitor-mobile-card__actions"><Button variant="secondary" onClick={() => void openDetails(visitor)}><Eye aria-hidden="true" size={14} />View</Button><Button variant="secondary" onClick={() => setFormVisitor(visitor)}><Edit3 aria-hidden="true" size={14} />Edit</Button></div>
               </Card>
             ))}

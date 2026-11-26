@@ -1,5 +1,6 @@
 import type { StudentRecord } from '../../services/api'
 import type { CourseCode } from '../courseCodes/courseCodeTypes'
+import { formatReceiptCurrency } from '../payments/receiptActions'
 
 export interface StudentFilters {
   query: string
@@ -8,6 +9,11 @@ export interface StudentFilters {
 
 export function courseKey(name: string) {
   return name.trim().toLowerCase()
+}
+
+export function formatAdmissionFeeStatus(balance: StudentRecord['balance']) {
+  if (typeof balance !== 'number' || !Number.isFinite(balance)) return 'Unavailable'
+  return balance > 0 ? `Pending Due: ${formatReceiptCurrency(balance)}` : 'Paid'
 }
 
 function admissionDateParts(value: string) {
@@ -64,7 +70,7 @@ export function summarizeAdmissions(students: StudentRecord[], today = new Date(
   }
 }
 
-export function courseNavigation(courses: CourseCode[], students: StudentRecord[]) {
+export function courseNavigation(courses: CourseCode[], students: Pick<StudentRecord, 'course'>[]) {
   const options = new Map<string, { name: string; active: boolean | null }>()
   courses.forEach((course) => {
     if (course.active) options.set(courseKey(course.name), { name: course.name, active: true })
@@ -92,7 +98,7 @@ export function batchNavigation(students: StudentRecord[], course: string) {
     .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }))
 }
 
-export function filterAdmissions(students: StudentRecord[], filters: StudentFilters, course: string, batch: string) {
+export function filterAdmissions<Record extends Pick<StudentRecord, 'studentId' | 'fullName' | 'mobileNumber' | 'email' | 'course' | 'batch' | 'enrollmentYear'>>(students: Record[], filters: StudentFilters, course: string, batch: string) {
   const query = filters.query.trim().toLowerCase()
   return students.filter((student) =>
     (!query || [student.studentId, student.fullName, student.mobileNumber, student.email]

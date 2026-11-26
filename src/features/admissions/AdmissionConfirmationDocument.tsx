@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
 import type { AdmissionConfirmationData } from './admissionConfirmation'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 const lsaBlackLogo = `${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent-%20Black.png`
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -40,7 +41,7 @@ function DetailSection({
       <h2>{title}</h2>
       <dl>
         {values.map(({ label, value }) => (
-          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+          <div key={label}><dt>{label}</dt><dd>{label === 'Course' ? <CourseLabel name={value} /> : value}</dd></div>
         ))}
       </dl>
     </section>

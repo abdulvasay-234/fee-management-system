@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import { Badge } from '../../components/ui'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
 import { formatReceiptCurrency, formatReceiptDate } from './receiptActions'
+import { CourseLabel } from '../courseCodes/CourseLabel'
 
 const lsaWhiteLogo = `${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent-%20WHite.png`
 
@@ -37,7 +38,7 @@ export const FeeReceipt = forwardRef<HTMLElement, FeeReceiptProps>(
         <dl className="receipt-preview__details">
           <div><dt>Admission Number</dt><dd>{admission.admissionNumber}</dd></div>
           <div><dt>Student Name</dt><dd>{admission.studentName}</dd></div>
-          <div><dt>Course</dt><dd>{admission.course}</dd></div>
+          <div><dt>Course</dt><dd><CourseLabel name={admission.course} /></dd></div>
           <div><dt>Batch</dt><dd>{admission.batchNumber}</dd></div>
           <div><dt>Enrollment Month / Year</dt><dd>{admission.enrollmentMonth} {admission.enrollmentYear}</dd></div>
           <div><dt>Admission Date</dt><dd>{formatReceiptDate(admission.admissionDate)}</dd></div>

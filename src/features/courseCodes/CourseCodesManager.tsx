@@ -10,6 +10,7 @@ import {
 } from './courseCodeService'
 import { CourseCodeFormModal } from './CourseCodeFormModal'
 import type { CourseCode } from './courseCodeTypes'
+import { CourseLabel } from './CourseLabel'
 
 type CourseFilter = 'all' | 'Regular' | 'Other'
 
@@ -96,7 +97,7 @@ export function CourseCodesManager() {
             {filteredCourses.map((course) => (
               <tr className={course.type === 'Other' ? 'course-codes-table__reserved' : ''} key={course.id}>
                 <td><span className="course-code-value">{course.code}</span></td>
-                <td><strong>{course.name}</strong>{course.type === 'Other' && <small>Reserved for Other Programs</small>}</td>
+                <td><CourseLabel name={course.name} code={course.code} />{course.type === 'Other' && <small>Reserved for Other Programs</small>}</td>
                 <td><Badge variant={course.type === 'Other' ? 'yellow' : 'navy'}>{course.type}</Badge></td>
                 <td>{course.active ? 'Yes' : 'No'}</td>
                 <td>
