@@ -1,18 +1,18 @@
-import { LogOut, ShieldCheck } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Button } from '../components/ui/Button'
 import { useAuth } from './useAuth'
 
-const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/hackunion.jpg`
+const lsaLogo = `${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent- Black.png`
 
 export function AuthLoadingScreen() {
   return (
-    <main className="auth-screen">
+    <main className="auth-screen-new">
       <div className="auth-loading" role="status">
-        <img src={hackunionLogo} alt="HackUnion" className="auth-loading__logo" />
+        <img src={lsaLogo} alt="LSA" className="auth-loading__logo" />
         <span className="auth-loading__mark" aria-hidden="true" />
         <strong>Checking application access</strong>
-        <p>Preparing HackUnion workspace.</p>
+        <p>Preparing LSA workspace.</p>
       </div>
     </main>
   )
@@ -27,27 +27,40 @@ export function LoginScreen() {
   }, [renderGoogleButton])
 
   return (
-    <main className="auth-screen">
-      <aside className="auth-brand" aria-label="HackUnion">
-        <img src={hackunionLogo} alt="HackUnion" />
-        <div>
-          <span>HackUnion</span>
-          <h1>Fee Management</h1>
-          <p>Admin workspace for fee operations and admissions management.</p>
+    <main className="auth-screen-new">
+      <div className="auth-container">
+        <div className="auth-header">
+          <img src={lsaLogo} alt="LSA" className="auth-header__logo" />
+          <span className="auth-header__label">LSA CONNECT</span>
         </div>
-      </aside>
-      <section className="auth-content" aria-labelledby="login-title">
-        <div className="auth-panel">
-          <div className="auth-panel__icon" aria-hidden="true"><ShieldCheck size={24} /></div>
-          <span className="auth-panel__eyebrow">Staff access only</span>
-          <h2 id="login-title">Continue to workspace</h2>
-          <p>Sign in with your approved Google account to continue.</p>
-          <div className="auth-google-button" ref={buttonRef} />
-          <button className="auth-google-fallback" type="button" onClick={signIn}>Try Google Sign-In</button>
-          {error && <p className="auth-message" role="alert">{error}</p>}
-          <small>Design & Developed by Abdul Vasay</small>
+
+        <div className="auth-welcome">
+          <h1 className="auth-welcome__heading">Welcome back.</h1>
+          <p className="auth-welcome__text">Sign in to access the LSA workspace.</p>
         </div>
-      </section>
+
+        <div className="auth-card">
+          <div className="auth-card__content">
+            <p className="auth-card__label">Authorised staff access only</p>
+            <div className="auth-google-button" ref={buttonRef} />
+            <button className="auth-google-fallback" type="button" onClick={signIn}>
+              Continue with Google
+            </button>
+            {error && <p className="auth-error" role="alert">{error}</p>}
+          </div>
+        </div>
+
+        <footer className="auth-footer">
+          <div className="auth-footer__content">
+            <p className="auth-footer__credits">
+              Built with <a href="https://hackunion.in" target="_blank" rel="noopener noreferrer">HackUnion</a> <span className="auth-footer__separator">·</span> Designed & Developed by <a href="https://abdulvasay.com" target="_blank" rel="noopener noreferrer">Abdul Vasay</a>
+            </p>
+            <p className="auth-footer__support">
+              Need help? <a href="mailto:hello@abdulvasay.com">Contact support</a>
+            </p>
+          </div>
+        </footer>
+      </div>
     </main>
   )
 }
@@ -55,22 +68,46 @@ export function LoginScreen() {
 export function AccessDeniedScreen() {
   const { email, signOut } = useAuth()
   return (
-    <main className="auth-screen">
-      <aside className="auth-brand" aria-label="HackUnion">
-        <img src={hackunionLogo} alt="HackUnion" />
-        <div><span>HackUnion</span><h1>Fee Management</h1></div>
-      </aside>
-      <section className="auth-content" aria-labelledby="access-denied-title">
-        <div className="auth-panel">
-          <div className="auth-panel__icon auth-panel__icon--denied" aria-hidden="true"><LogOut size={24} /></div>
-          <span className="auth-panel__eyebrow">Access denied</span>
-          <h2 id="access-denied-title">This account is not approved</h2>
-          <p>Your Google account is not authorized to access this application.</p>
-          {email && <div className="auth-account"><span>Signed in as</span><strong>{email}</strong></div>}
-          <Button onClick={signOut}><LogOut aria-hidden="true" size={16} />Sign out / Try another account</Button>
-          <small>Design & Developed by Abdul Vasay</small>
+    <main className="auth-screen-new">
+      <div className="auth-container">
+        <div className="auth-header">
+          <img src={lsaLogo} alt="LSA" className="auth-header__logo" />
+          <span className="auth-header__label">LSA CONNECT</span>
         </div>
-      </section>
+
+        <div className="auth-welcome">
+          <h1 className="auth-welcome__heading">Access denied.</h1>
+          <p className="auth-welcome__text">This account is not authorized.</p>
+        </div>
+
+        <div className="auth-card">
+          <div className="auth-card__content">
+            <p className="auth-card__label">Account not approved</p>
+            <p className="auth-card__message">Your Google account is not authorized to access this application.</p>
+            {email && (
+              <div className="auth-card__account">
+                <span>Signed in as</span>
+                <strong>{email}</strong>
+              </div>
+            )}
+            <Button onClick={signOut} className="auth-card__button">
+              <LogOut aria-hidden="true" size={16} />
+              Sign out / Try another account
+            </Button>
+          </div>
+        </div>
+
+        <footer className="auth-footer">
+          <div className="auth-footer__content">
+            <p className="auth-footer__credits">
+              Built with <a href="https://hackunion.in" target="_blank" rel="noopener noreferrer">HackUnion</a> <span className="auth-footer__separator">·</span> Designed & Developed by <a href="https://abdulvasay.com" target="_blank" rel="noopener noreferrer">Abdul Vasay</a>
+            </p>
+            <p className="auth-footer__support">
+              Need help? <a href="mailto:hello@abdulvasay.com">Contact support</a>
+            </p>
+          </div>
+        </footer>
+      </div>
     </main>
   )
 }

@@ -5,4 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/fee-management-system/',
   plugins: [react()],
+  server: {
+    port: 5175,
+  },
 })
