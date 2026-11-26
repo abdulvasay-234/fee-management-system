@@ -1,8 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { navigationItems } from '../../config/navigation'
 
-const hackunionLogo = `${import.meta.env.BASE_URL}imgs/logos/hackunion.jpg`
-
 interface SidebarProps {
   isOpen: boolean
   onNavigate: () => void
@@ -15,13 +13,10 @@ export function Sidebar({ isOpen, onNavigate }: SidebarProps) {
       aria-label="Main navigation"
     >
       <div className="brand">
-        <div className="brand__logo" aria-hidden="true">
-          <img src={hackunionLogo} alt="" />
+        <div className="brand__header">
+          <h2 className="brand__title">LSA Connect</h2>
+          <p className="brand__subtitle">Academy Management Workspace</p>
         </div>
-        <p className="brand__name">
-          Developed by abdulvasay
-          <span className="brand__short-name">LSA</span>
-        </p>
       </div>
 
       <p className="sidebar__section-label">Workspace</p>

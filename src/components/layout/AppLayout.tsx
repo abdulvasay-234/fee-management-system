@@ -23,6 +23,19 @@ export function AppLayout() {
         <main>
           <Outlet />
         </main>
+        <footer className="app-footer">
+          <div className="app-footer__content">
+            <p className="app-footer__credits">
+              Designed & Developed by{' '}
+              <a href="https://abdulvasay.com" target="_blank" rel="noopener noreferrer">
+                Abdul Vasay
+              </a>
+            </p>
+            <p className="app-footer__copyright">
+              © {new Date().getFullYear()} LSA Connect. All rights reserved.
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
   )
