@@ -1561,27 +1561,17 @@ select:focus-visible {
 }
 
 .auth-brand::before {
-  content: '';
-  position: absolute;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(255, 107, 53, 0.08) 0%, transparent 70%);
-  border-radius: 50%;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: -1;
+  display: none;
 }
 
 .auth-brand img {
   display: block;
-  width: 120px;
-  height: 120px;
+  width: 180px;
+  height: 180px;
   object-fit: contain;
   margin-bottom: var(--space-6);
-  filter: drop-shadow(0 0 20px rgba(255, 107, 53, 0.4)) drop-shadow(0 0 40px rgba(0, 212, 255, 0.2));
-  animation: float 3s ease-in-out infinite, highlightBox1 10s ease-in-out infinite;
+  filter: none;
+  animation: none;
 }
 
 @keyframes highlightBox1 {
@@ -4774,8 +4764,8 @@ select:focus-visible {
   }
 
   .auth-brand img {
-    width: 80px;
-    height: 80px;
+    width: 120px;
+    height: 120px;
   }
 
   .auth-brand span {
@@ -6115,8 +6105,8 @@ select:focus-visible {
   }
 
   .auth-brand img {
-    width: 60px;
-    height: 60px;
+    width: 100px;
+    height: 100px;
     margin-bottom: var(--space-4);
   }
 
@@ -6183,8 +6173,8 @@ select:focus-visible {
   }
 
   .auth-brand img {
-    width: 70px;
-    height: 70px;
+    width: 130px;
+    height: 130px;
   }
 
   .auth-brand h1 {
@@ -6211,8 +6201,8 @@ select:focus-visible {
   }
 
   .auth-brand img {
-    width: 100px;
-    height: 100px;
+    width: 150px;
+    height: 150px;
   }
 
   .auth-brand h1 {
@@ -6231,8 +6221,8 @@ select:focus-visible {
 /* Responsive auth screen - Large devices (> 1024px) */
 @media (min-width: 1025px) {
   .auth-brand img {
-    width: 120px;
-    height: 120px;
+    width: 180px;
+    height: 180px;
   }
 
   .auth-brand h1 {
