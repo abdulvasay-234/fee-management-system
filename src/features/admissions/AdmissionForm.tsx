@@ -191,6 +191,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const [conversionError, setConversionError] = useState('')
   const [confirmationData, setConfirmationData] = useState<AdmissionConfirmationData | null>(null)
   const [confirmationLoadError, setConfirmationLoadError] = useState('')
+  const [admissionIndexWarning, setAdmissionIndexWarning] = useState('')
   const [isAdmissionDocumentOpen, setIsAdmissionDocumentOpen] = useState(false)
   const [pdfError, setPdfError] = useState('')
   const [printError, setPrintError] = useState('')
@@ -370,6 +371,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       } else {
         const result = await createAdmission(admissionPayload)
         const { student } = result
+        setAdmissionIndexWarning(result.indexWarning ?? '')
         const admission: AdmissionSnapshot = {
           admissionDate: student.admissionDate,
           admissionNumber: student.studentId,
@@ -689,6 +691,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
               <div><dt>Final course fee</dt><dd>{currencyFormatter.format(preview.finalFee)}</dd></div>
             </dl>
             {confirmationLoadError && <p className="admission-confirmation-load-error" role="alert">{confirmationLoadError}</p>}
+            {admissionIndexWarning && <p className="admission-confirmation-load-error" role="alert">Admission saved, but {admissionIndexWarning} Contact an administrator; do not submit it again.</p>}
           </div>
         )}
       </Modal>

@@ -60,6 +60,7 @@ export interface AdmissionPayload {
 }
 
 export interface AdmissionResponse {
+  indexWarning?: string
   student: {
     studentId: string
     fullName: string
@@ -82,10 +83,13 @@ export interface PaymentPayload {
   course: string
   amountPaid: number
   paymentDate: string
+  feeType?: string
+  paymentMode?: string
   remarks: string
 }
 
 export interface PaymentResponse {
+  indexWarning?: string
   receipt: {
     receiptId: string
     studentId: string
@@ -311,7 +315,7 @@ async function request<T>(
   init: RequestInit = {},
   credential = getIdToken(),
   notifyFailure = true,
-  outcomeMayBeUnknown = false,
+  outcomeMayBeUnknown: 'conversion' | 'payment' | null = null,
 ): Promise<T> {
   if (!credential) throw new ApiHttpError('Authentication required.', 401)
   const controller = new AbortController()
@@ -331,7 +335,10 @@ async function request<T>(
     }
     if (!response.ok) {
       if (outcomeMayBeUnknown && response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-        throw new ApiHttpError('The conversion request was rejected. Review the admission details and try again.', response.status)
+        const message = outcomeMayBeUnknown === 'payment'
+          ? 'The payment request was rejected. Review the payment details and try again.'
+          : 'The conversion request was rejected. Review the admission details and try again.'
+        throw new ApiHttpError(message, response.status)
       }
       throw new Error('The LSA API could not complete the request.')
     }
@@ -345,6 +352,9 @@ async function request<T>(
   } catch (error) {
     if (error instanceof ApiHttpError || error instanceof ApiOutcomeUnknownError) throw error
     if (outcomeMayBeUnknown) {
+      if (outcomeMayBeUnknown === 'payment') {
+        throw new ApiOutcomeUnknownError(`Payment outcome could not be confirmed${error instanceof Error ? `: ${error.message}` : '.'} Check the payment history before submitting again; contact an administrator if it is unclear.`)
+      }
       throw new ApiOutcomeUnknownError('The conversion response was not confirmed. Its outcome may be unknown. Do not submit again until the enquiry and admission records have been checked.')
     }
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -360,7 +370,7 @@ export function validateCredential(credential: string) {
   return request<{ success: true; data: CourseCode[] }>('?action=course-codes', {}, credential, false)
 }
 
-function post<T>(payload: Record<string, unknown>, outcomeMayBeUnknown = false) {
+function post<T>(payload: Record<string, unknown>, outcomeMayBeUnknown: 'conversion' | 'payment' | null = null) {
   return request<T>('', {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -403,8 +413,25 @@ export function createAdmission(payload: AdmissionPayload) {
   return postIdempotent<{ success: true } & AdmissionResponse>('add-student', payload)
 }
 
-export function createPayment(payload: PaymentPayload) {
-  return postIdempotent<{ success: true } & PaymentResponse>('add-payment', payload)
+export async function createPayment(payload: PaymentPayload) {
+  const signature = new TextEncoder().encode(JSON.stringify(payload))
+  const digest = await crypto.subtle.digest('SHA-256', signature)
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  const storageKey = `lsa-pending-payment:${hash}`
+  const idempotencyKey = localStorage.getItem(storageKey) ?? crypto.randomUUID()
+  localStorage.setItem(storageKey, idempotencyKey)
+  const result = await post<{ success: true } & PaymentResponse>(
+    { action: 'add-payment', ...payload, idempotencyKey }, 'payment',
+  )
+  try {
+    localStorage.removeItem(storageKey)
+  } catch {
+    return {
+      ...result,
+      indexWarning: [result.indexWarning, 'The browser could not clear the payment retry key. Contact an administrator before recording an identical payment.'].filter(Boolean).join(' '),
+    }
+  }
+  return result
 }
 
 function queryString(parameters: Record<string, string | undefined>) {
@@ -448,7 +475,7 @@ export async function fetchEnquiries() {
 }
 
 export function convertEnquiry(payload: ConvertEnquiryPayload) {
-  return post<ConvertEnquiryResponse>({ action: 'convert-enquiry', ...payload }, true)
+  return post<ConvertEnquiryResponse>({ action: 'convert-enquiry', ...payload }, 'conversion')
 }
 
 export function createEnquiry(payload: EnquiryPayload) {

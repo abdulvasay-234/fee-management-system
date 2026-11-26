@@ -215,6 +215,19 @@ function getGatewayParameters_(body) {
 
 const IDEMPOTENCY_PROPERTY_PREFIX_ = "LSA_IDEMPOTENCY_";
 const IDEMPOTENCY_RETENTION_MS_ = 7 * 24 * 60 * 60 * 1000;
+const FINANCIAL_INDEX_DIRTY_PROPERTY_ = "LSA_FINANCIAL_INDEX_DIRTY";
+
+function requireFinancialIndexReady_() {
+  if (PropertiesService.getScriptProperties().getProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_)) {
+    throw new Error("Financial indexes need reconciliation before financial records can be displayed.");
+  }
+}
+
+function finishPayment_(idempotency, response) {
+  const result = rememberIdempotentResult_(idempotency, response);
+  if (!result.indexWarning) PropertiesService.getScriptProperties().deleteProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_);
+  return result;
+}
 
 function getIdempotencyContext_(action, payload) {
   const key = String(payload.idempotencyKey || "").trim();
@@ -2111,7 +2124,7 @@ function addStudent_(payload, conversion) {
 
 
     const calculatedFinalFee =
-      totalCourseFee - discount;
+      (moneyToPaise_(totalCourseFee) - moneyToPaise_(discount)) / 100;
 
 
     // If frontend sends finalFee, verify it.
@@ -2513,6 +2526,10 @@ function addStudent_(payload, conversion) {
     } catch (error) {
 
       indexWarning = "Students Index synchronization failed: " + error.message;
+      const properties = PropertiesService.getScriptProperties();
+      if (!properties.getProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_)) {
+        properties.setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "admission:" + studentId);
+      }
 
     }
 
@@ -3756,6 +3773,10 @@ function synchronizeConversionStudentIndex_(sheet, admissionRow) {
   student.createdAt = sheet.getRange(admissionRow, info.columns["Created At"]).getValue();
   const payments = readIndexedPayments_({ studentId: student.studentId });
   synchronizeStudentIndex_(enrichStudentsWithPayments_([student], payments)[0]);
+  const properties = PropertiesService.getScriptProperties();
+  if (properties.getProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_) === "admission:" + student.studentId) {
+    properties.deleteProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_);
+  }
 }
 
 function linkEnquiryAdmission_(sheet, found, studentId) {
@@ -4092,8 +4113,14 @@ function addPayment_(payload) {
 
   try {
     const idempotency = getIdempotencyContext_("add-payment", payload);
+    if (!idempotency) throw new Error("An idempotency key is required for payments.");
+    const properties = PropertiesService.getScriptProperties();
+    const dirty = properties.getProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_);
+    if (dirty && dirty !== "payment:" + idempotency.key) {
+      throw new Error("Financial indexes need reconciliation before another payment can be recorded.");
+    }
     const previousResult = getIdempotencyResult_(idempotency);
-    if (previousResult.found) return previousResult.response;
+    if (previousResult.found && !dirty) return previousResult.response;
 
     const course =
       String(payload.course || "").trim();
@@ -4146,6 +4173,7 @@ function addPayment_(payload) {
       );
 
     }
+    moneyToPaise_(amountPaid);
 
     const courseInfo =
       findCourseCodeByName_(course);
@@ -4160,7 +4188,7 @@ function addPayment_(payload) {
 
     }
 
-    if (normalizeActive_(courseInfo.active) !== "Yes") {
+    if (normalizeActive_(courseInfo.active) !== "Yes" && normalizeCourseCode_(courseInfo.code) === "00" && payload.programType) {
 
       throw new Error(
         'Course "' +
@@ -4170,15 +4198,28 @@ function addPayment_(payload) {
 
     }
 
-    if (normalizeCourseCode_(courseInfo.code) === "00") {
+    const paymentInfo =
+      findPaymentSheetForCourse_(
+        courseInfo.courseName
+      );
+    const paymentHeaderInfo = ensurePaymentIdempotencyColumns_(paymentInfo.sheet);
+    const recoveredPayment = findPaymentByIdempotency_(paymentInfo.sheet, paymentHeaderInfo, idempotency);
+    if (recoveredPayment) {
+      properties.setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "payment:" + idempotency.key);
+      return finishPayment_(idempotency, createPaymentResponse_(paymentInfo.sheet, recoveredPayment.row, recoveredPayment.payment));
+    }
 
-      return rememberIdempotentResult_(idempotency, addOtherProgramPayment_(
+    if (normalizeCourseCode_(courseInfo.code) === "00" && payload.programType) {
+
+      return finishPayment_(idempotency, addOtherProgramPayment_(
         payload,
         courseInfo,
         paymentDate,
         feeType,
         paymentMode,
-        amountPaid
+        amountPaid,
+        paymentInfo,
+        idempotency
       ));
 
     }
@@ -4223,11 +4264,6 @@ function addPayment_(payload) {
 
     }
 
-    const paymentInfo =
-      findPaymentSheetForCourse_(
-        courseInfo.courseName
-      );
-
     const previousPaymentSummary =
       getPreviousPaid_(
         paymentInfo.sheet,
@@ -4237,14 +4273,10 @@ function addPayment_(payload) {
     const previousPaid = previousPaymentSummary.totalPaid;
 
     const totalPaid =
-      roundMoney_(
-        previousPaid + amountPaid
-      );
+      (moneyToPaise_(previousPaid) + moneyToPaise_(amountPaid)) / 100;
 
     const balance =
-      roundMoney_(
-        admission.finalFee - totalPaid
-      );
+      (moneyToPaise_(admission.finalFee) - moneyToPaise_(totalPaid)) / 100;
 
     if (balance < 0) {
 
@@ -4254,7 +4286,8 @@ function addPayment_(payload) {
 
     }
 
-    return rememberIdempotentResult_(idempotency, appendPayment_(
+    properties.setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "payment:" + idempotency.key);
+    return finishPayment_(idempotency, appendPayment_(
       paymentInfo.sheet,
       {
         receiptId: getNextReceiptId_(
@@ -4277,6 +4310,8 @@ function addPayment_(payload) {
         totalPaid: totalPaid,
         balance: balance,
         paymentCount: previousPaymentSummary.paymentCount + 1,
+        idempotencyKey: idempotency.key,
+        idempotencyFingerprint: idempotency.fingerprint,
         createdBy: getCreatedBy_(),
         createdAt: new Date(),
         remarks: String(payload.remarks || "").trim()
@@ -4298,7 +4333,9 @@ function addOtherProgramPayment_(
   paymentDate,
   feeType,
   paymentMode,
-  amountPaid
+  amountPaid,
+  paymentInfo,
+  idempotency
 ) {
 
   const programType =
@@ -4340,11 +4377,6 @@ function addOtherProgramPayment_(
 
   }
 
-  const paymentInfo =
-    findPaymentSheetForCourse_(
-      courseInfo.courseName
-    );
-
   const receiptId =
     getNextOtherProgramReceiptId_(
       paymentInfo.sheet,
@@ -4352,6 +4384,7 @@ function addOtherProgramPayment_(
       programType
     );
 
+  PropertiesService.getScriptProperties().setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "payment:" + idempotency.key);
   return appendPayment_(
     paymentInfo.sheet,
     {
@@ -4370,7 +4403,9 @@ function addOtherProgramPayment_(
       paymentMode: paymentMode,
       previousPaid: 0,
       totalPaid: amountPaid,
-      balance: roundMoney_(finalFee - amountPaid),
+      balance: (moneyToPaise_(finalFee) - moneyToPaise_(amountPaid)) / 100,
+      idempotencyKey: idempotency.key,
+      idempotencyFingerprint: idempotency.fingerprint,
       createdBy: getCreatedBy_(),
       createdAt: new Date(),
       remarks: String(payload.remarks || "").trim()
@@ -4491,6 +4526,42 @@ function getPaymentHeaderInfo_(
 
 }
 
+function ensurePaymentIdempotencyColumns_(sheet) {
+  const info = getPaymentHeaderInfo_(sheet);
+  const required = ["Idempotency Key", "Idempotency Fingerprint"];
+  required.forEach(function(header) {
+    if (info.headers.filter(function(existing) { return existing === header; }).length > 1) {
+      throw new Error('Payment sheet has duplicate column "' + header + '".');
+    }
+  });
+  const missing = required.filter(function(header) { return !info.columns[header]; });
+  if (missing.length) {
+    const currentColumns = sheet.getMaxColumns();
+    const neededColumns = info.headers.length + missing.length;
+    if (neededColumns > currentColumns) sheet.insertColumnsAfter(currentColumns, neededColumns - currentColumns);
+    sheet.getRange(1, info.headers.length + 1, 1, missing.length).setValues([missing]);
+  }
+  return missing.length ? getPaymentHeaderInfo_(sheet) : info;
+}
+
+function findPaymentByIdempotency_(sheet, info, idempotency) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  const rows = sheet.getRange(2, 1, lastRow - 1, info.headers.length).getDisplayValues();
+  let match = null;
+  rows.forEach(function(row, index) {
+    if (String(row[info.columns["Idempotency Key"] - 1] || "").trim() !== idempotency.key) return;
+    if (match) throw new Error("Multiple payments use the same idempotency key.");
+    if (String(row[info.columns["Idempotency Fingerprint"] - 1] || "").trim() !== idempotency.fingerprint) {
+      throw new Error("Idempotency key was reused with different request data.");
+    }
+    const columns = {};
+    Object.keys(info.columns).forEach(function(header) { columns[header] = info.columns[header] - 1; });
+    match = { row: index + 2, payment: mapPaymentRow_(row, columns) };
+  });
+  return match;
+}
+
 
 function getPreviousPaid_(
   sheet,
@@ -4501,14 +4572,14 @@ function getPreviousPaid_(
   const lastRow = sheet.getLastRow();
 
   if (lastRow < 2) {
-    return 0;
+    return { totalPaid: 0, paymentCount: 0 };
   }
 
   const values = sheet.getRange(
     2, 1, lastRow - 1, headerInfo.headers.length
   ).getDisplayValues();
 
-  let totalPaid = 0;
+  let totalPaidPaise = 0;
   let paymentCount = 0;
   values.forEach(function(row) {
         if (
@@ -4523,12 +4594,14 @@ function getPreviousPaid_(
           row[headerInfo.columns["Amount Paid"] - 1]
         );
 
-        totalPaid += paid === null ? 0 : paid;
+        if (paid === null) throw new Error("A payment for student " + studentId + " has no amount.");
+        totalPaidPaise += moneyToPaise_(paid);
+        if (!Number.isSafeInteger(totalPaidPaise)) throw new Error("Payment total exceeds the supported amount.");
         paymentCount += 1;
       });
 
   return {
-    totalPaid: roundMoney_(totalPaid),
+    totalPaid: totalPaidPaise / 100,
     paymentCount: paymentCount
   };
 
@@ -4558,6 +4631,8 @@ function appendPayment_(
         "Previous Paid": "previousPaid",
         "Total Paid": "totalPaid",
         "Balance": "balance",
+        "Idempotency Key": "idempotencyKey",
+        "Idempotency Fingerprint": "idempotencyFingerprint",
         "Created By": "createdBy",
         "Created At": "createdAt",
         "Remarks": "remarks"
@@ -4571,21 +4646,23 @@ function appendPayment_(
 
   const nextRow = Math.max(sheet.getLastRow() + 1, 2);
 
-  sheet.getRange(
-    nextRow, 1, 1, rowValues.length
-  ).setValues([rowValues]);
-
   ["Receipt ID", "Student ID"].forEach(
     function(header) {
       sheet.getRange(
         nextRow,
         headerInfo.columns[header]
-      ).setNumberFormat("@").setValue(
-        payment[header === "Receipt ID" ? "receiptId" : "studentId"]
-      );
+      ).setNumberFormat("@");
     }
   );
 
+  sheet.getRange(
+    nextRow, 1, 1, rowValues.length
+  ).setValues([rowValues]);
+
+  return createPaymentResponse_(sheet, nextRow, payment);
+}
+
+function createPaymentResponse_(sheet, row, payment) {
   const response = {
     success: true,
     message: "Payment receipt created successfully.",
@@ -4599,7 +4676,7 @@ function appendPayment_(
     sheet: {
       name: sheet.getName(),
       id: sheet.getParent().getId(),
-      row: nextRow
+      row: row
     }
   };
 
@@ -4755,6 +4832,36 @@ function roundMoney_(
 
   return Math.round((value + Number.EPSILON) * 100) / 100;
 
+}
+
+function moneyToPaise_(value) {
+  if (value === null || value === undefined || value === "") {
+    throw new Error("Missing monetary amount.");
+  }
+  const scaled = Number(value) * 100;
+  const paise = Math.round(scaled);
+  if (!Number.isFinite(scaled) || !Number.isSafeInteger(paise) || Math.abs(scaled - paise) > 0.000001) {
+    throw new Error("Invalid monetary amount: expected at most two decimal places.");
+  }
+  return paise;
+}
+
+function sumPaymentAmounts_(payments) {
+  return payments.reduce(function(total, payment) {
+    const next = total + moneyToPaise_(payment.amountPaid);
+    if (!Number.isSafeInteger(next)) throw new Error("Payment total exceeds the supported amount.");
+    return next;
+  }, 0) / 100;
+}
+
+function calculateStudentFinancials_(student, payments) {
+  const totalPaid = sumPaymentAmounts_(payments);
+  const balancePaise = moneyToPaise_(student.finalFee) - moneyToPaise_(totalPaid);
+  if (!Number.isSafeInteger(balancePaise)) throw new Error("Balance exceeds the supported amount.");
+  const status = balancePaise < 0 ? "Overpaid"
+    : balancePaise === 0 ? "Paid"
+    : totalPaid > 0 ? "Partially Paid" : "Unpaid";
+  return { totalPaid: totalPaid, balance: balancePaise / 100, paymentStatus: status };
 }
 
 function testAddStudent() {

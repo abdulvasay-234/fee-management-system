@@ -36,9 +36,9 @@ export function calculateFinalFee(total: string, discount: string) {
   if (total === '') return ''
   const totalAmount = parseAmount(total)
   const discountAmount = parseAmount(discount)
-  const finalAmount = totalAmount - discountAmount
+  const finalAmount = (Math.round(totalAmount * 100) - Math.round(discountAmount * 100)) / 100
 
-  return Math.round(Math.max(finalAmount, 0)).toLocaleString('en-IN')
+  return Math.max(finalAmount, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })
 }
 
 export function getAdmissionMetadata(admissionDate: string) {

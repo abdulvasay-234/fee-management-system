@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Table } from '../../components/ui'
 import { fetchStudent } from '../../services/api'
+import { getPaymentStatus } from '../../utils/amount'
 import { createAdmissionConfirmationData, type AdmissionConfirmationData } from '../admissions/admissionConfirmation'
 import { AdmissionConfirmationDocumentModal } from '../admissions/AdmissionConfirmationDocumentModal'
 import type { PaymentRecord } from '../workflow/workflowTypes'
@@ -11,7 +12,7 @@ import type { Student } from './studentTypes'
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
-  maximumFractionDigits: 0,
+  maximumFractionDigits: 2,
 })
 
 function formatTime(time: string) {
@@ -46,6 +47,8 @@ interface StudentDetailsModalProps {
   onClose: () => void
   onMakePayment: (student: Student) => void
   payments: PaymentRecord[]
+  paymentsError: string
+  paymentsLoading: boolean
   student: Student
 }
 
@@ -53,6 +56,8 @@ export function StudentDetailsModal({
   onClose,
   onMakePayment,
   payments,
+  paymentsError,
+  paymentsLoading,
   student,
 }: StudentDetailsModalProps) {
   const navigate = useNavigate()
@@ -117,6 +122,7 @@ export function StudentDetailsModal({
             <div><span>Final Fee</span><strong>{currencyFormatter.format(student.finalFee)}</strong></div>
             <div><span>Paid</span><strong>{currencyFormatter.format(student.totalPaid)}</strong></div>
             <div className="student-fee-summary__balance"><span>Balance</span><strong>{currencyFormatter.format(student.balance)}</strong></div>
+            <div><span>Status</span><strong>{getPaymentStatus(student.totalPaid, student.balance)}</strong></div>
             <Button onClick={() => onMakePayment(student)}>
               <Banknote aria-hidden="true" size={16} />
               Make Payment
@@ -183,7 +189,9 @@ export function StudentDetailsModal({
                 <ChevronRight aria-hidden="true" size={15} />
               </Button>
             </div>
-            {payments.length > 0 ? (
+            {paymentsError ? <p className="student-detail-remarks" role="alert">{paymentsError}</p> : paymentsLoading ? (
+              <p className="student-detail-remarks">Loading payment history...</p>
+            ) : payments.length > 0 ? (
               <Table className="student-payments-table">
                 <thead>
                   <tr>

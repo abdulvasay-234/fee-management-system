@@ -4,19 +4,19 @@ function normalizeComparableDateTime_(value) {
   const text = String(value).trim();
   if (!text) return "";
 
-  let date = null;
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const usDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (isoDate || usDate) {
+    const year = Number(isoDate ? isoDate[1] : usDate[3]);
+    const month = Number(isoDate ? isoDate[2] : usDate[1]);
+    const day = Number(isoDate ? isoDate[3] : usDate[2]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return "";
+    return String(year).padStart(4, "0") + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0") + "T00:00:00";
+  }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match) {
-      date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    }
-  } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text)) {
-    const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (match) {
-      date = new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]));
-    }
-  } else if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+  let date = null;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
     date = new Date(text);
   } else if (!Number.isNaN(Date.parse(text))) {
     date = new Date(text);
@@ -45,40 +45,38 @@ function comparePaymentChronology_(left, right) {
 
 function getRegularCourses_() {
   return getCourseCodes_().filter(function(course) {
-    return normalizeText_(course.type) === "regular" && normalizeActive_(course.active) === "Yes";
+    return normalizeText_(course.type) === "regular";
   });
 }
 
 function getStudents_(filters) {
-  return readIndexedStudents_(filters);
+  requireFinancialIndexReady_();
+  return enrichStudentsWithPayments_(readIndexedStudents_(filters), readIndexedPayments_({}));
 }
 
 function readStudentsForCourses_(courses, filters) {
   const students = [];
-  const seen = {};
+  const seen = Object.create(null);
   courses.forEach(function(course) {
     if (!matchesCourseFilter_(course.courseName, filters.course)) return;
-    try {
-      readSheetRecords_(findAdmissionSheetForCourse_(course.courseName).sheet, CONFIG.ADMISSION_HEADERS, mapAdmissionRow_)
-        .forEach(function(student) {
-          if (student.studentId && !seen[student.studentId] && matchesStudentFilters_(student, filters)) {
-            seen[student.studentId] = true;
-            students.push(student);
-          }
-        });
-    } catch (error) {
-      // A missing course sheet contributes no admission records.
-    }
+    readSheetRecords_(findAdmissionSheetForCourse_(course.courseName).sheet, CONFIG.ADMISSION_HEADERS, mapAdmissionRow_)
+      .forEach(function(student) {
+        if (!student.studentId) throw new Error("Admission source contains a missing Student ID.");
+        if (seen[student.studentId]) throw new Error('Duplicate Student ID in source data: "' + student.studentId + '".');
+        seen[student.studentId] = true;
+        if (matchesStudentFilters_(student, filters)) students.push(student);
+      });
   });
   return students.sort(function(left, right) { return right.admissionDate.localeCompare(left.admissionDate); });
 }
 
 function enrichStudentsWithPayments_(students, payments) {
-  const latestPayments = {};
-  const paymentCounts = {};
+  const latestPayments = Object.create(null);
+  const paymentsByStudent = Object.create(null);
 
   payments.forEach(function(payment) {
-    paymentCounts[payment.studentId] = (paymentCounts[payment.studentId] || 0) + 1;
+    if (!paymentsByStudent[payment.studentId]) paymentsByStudent[payment.studentId] = [];
+    paymentsByStudent[payment.studentId].push(payment);
     const current = latestPayments[payment.studentId];
     const currentDate = current ? normalizeComparableDateTime_(current.paymentDate) : "";
     const paymentDate = normalizeComparableDateTime_(payment.paymentDate);
@@ -91,16 +89,20 @@ function enrichStudentsWithPayments_(students, payments) {
 
   return students.map(function(student) {
     const payment = latestPayments[student.studentId];
-    student.totalPaid = payment ? payment.totalPaid : 0;
-    student.balance = payment ? payment.balance : student.finalFee;
+    const studentPayments = paymentsByStudent[student.studentId] || [];
+    const financials = calculateStudentFinancials_(student, studentPayments);
+    student.totalPaid = financials.totalPaid;
+    student.balance = financials.balance;
+    student.paymentStatus = financials.paymentStatus;
     student.latestPaymentDate = payment ? normalizeComparableDateOnly_(payment.paymentDate) : "";
     student.latestReceiptId = payment ? payment.receiptId : "";
-    student.paymentCount = paymentCounts[student.studentId] || 0;
+    student.paymentCount = studentPayments.length;
     return student;
   });
 }
 
 function getStudentDetails_(parameters) {
+  requireFinancialIndexReady_();
   const studentId = String(parameters.studentId || "").trim();
   if (!studentId) throw new Error("Student ID is required.");
   const student = readIndexedStudents_({ studentId: studentId })[0];
@@ -127,19 +129,21 @@ function getStudentDetails_(parameters) {
     Logger.log("Admission source detail lookup failed for " + studentId + ": " + error.message);
   }
   const payments = readIndexedPayments_({ studentId: studentId });
+  enrichStudentsWithPayments_([student], payments);
   const latestPayment = payments.slice().sort(function(left, right) {
     return comparePaymentChronology_(right, left);
   })[0] || null;
   return {
     student: student,
     payments: payments,
-    totalPaid: latestPayment ? latestPayment.totalPaid : 0,
-    balance: latestPayment ? latestPayment.balance : student.finalFee,
+    totalPaid: student.totalPaid,
+    balance: student.balance,
     latestPayment: latestPayment
   };
 }
 
 function getPayments_(filters) {
+  requireFinancialIndexReady_();
   return readIndexedPayments_(filters);
 }
 
@@ -177,20 +181,16 @@ function readFollowUpSourceRecords_() {
 
 function readPaymentsForCourses_(courses, filters) {
   const payments = [];
-  const seen = {};
+  const seen = Object.create(null);
   courses.forEach(function(course) {
     if (!matchesCourseFilter_(course.courseName, filters.course)) return;
-    try {
-      readSheetRecords_(findPaymentSheetForCourse_(course.courseName).sheet, CONFIG.PAYMENT_HEADERS, mapPaymentRow_)
-        .forEach(function(payment) {
-          if (payment.receiptId && !seen[payment.receiptId] && matchesPaymentFilters_(payment, filters)) {
-            seen[payment.receiptId] = true;
-            payments.push(payment);
-          }
-        });
-    } catch (error) {
-      // A missing course sheet contributes no payment records.
-    }
+    readSheetRecords_(findPaymentSheetForCourse_(course.courseName).sheet, CONFIG.PAYMENT_HEADERS, mapPaymentRow_)
+      .forEach(function(payment) {
+        if (!payment.receiptId) throw new Error("Payment source contains a missing Receipt ID.");
+        if (seen[payment.receiptId]) throw new Error('Duplicate Receipt ID in source data: "' + payment.receiptId + '".');
+        seen[payment.receiptId] = true;
+        if (matchesPaymentFilters_(payment, filters)) payments.push(payment);
+      });
   });
   return payments.sort(function(left, right) {
     return comparePaymentChronology_(right, left);
@@ -198,21 +198,12 @@ function readPaymentsForCourses_(courses, filters) {
 }
 
 function getDashboardData_() {
-  const students = readIndexedStudents_({});
-  const payments = readIndexedPayments_({});
-  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-  const latestPayments = {};
-
-  payments.forEach(function(payment) {
-    const current = latestPayments[payment.studentId];
-    const currentDate = current ? normalizeComparableDateTime_(current.paymentDate) : "";
-    const paymentDate = normalizeComparableDateTime_(payment.paymentDate);
-
-    if (!current || paymentDate > currentDate ||
-      (paymentDate === currentDate && String(payment.receiptId || "") > String(current.receiptId || ""))) {
-      latestPayments[payment.studentId] = payment;
-    }
+  requireFinancialIndexReady_();
+  const payments = readIndexedPayments_({}).sort(function(left, right) {
+    return comparePaymentChronology_(right, left);
   });
+  const students = enrichStudentsWithPayments_(readIndexedStudents_({}), payments);
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 
   const todayPayments = payments.filter(function(payment) {
     return normalizeComparableDateOnly_(payment.paymentDate) === today;
@@ -225,10 +216,9 @@ function getDashboardData_() {
   return {
     totalStudents: students.length,
     totalCollected: roundMoney_(totalCollected),
-    outstandingFees: roundMoney_(students.reduce(function(total, student) {
-      const studentLatestPayment = latestPayments[student.studentId];
-      return total + (studentLatestPayment ? studentLatestPayment.balance : student.finalFee);
-    }, 0)),
+    outstandingFees: students.reduce(function(total, student) {
+      return total + Math.max(moneyToPaise_(student.balance), 0);
+    }, 0) / 100,
     todaysCollection: roundMoney_(sumBy_(todayPayments, "amountPaid")),
     admissionsOverview: {
       today: students.filter(function(student) { return normalizeComparableDateOnly_(student.admissionDate) === today; }).length,
@@ -263,13 +253,15 @@ function mapAdmissionRow_(row, columns) {
   const value = function(header) { return String(row[columns[header]] || "").trim(); };
   const totalCourseFee = normalizeOptionalMoney_(value("Total Course Fee")) || 0;
   const discount = normalizeOptionalMoney_(value("Discount")) || 0;
+  const finalFee = normalizeOptionalMoney_(value("Final Fee"));
+  if (finalFee === null) throw new Error('Student "' + value("Student ID") + '" has no final fee.');
   return {
     studentId: value("Student ID"), fullName: value("Full Name"), fatherName: value("Father's Name"), motherName: value("Mother's Name"),
     dateOfBirth: value("Date of Birth"), gender: value("Gender"), mobileNumber: value("Mobile Number"), email: value("Email"),
     address: value("Address"), city: value("City"), state: value("State"), pincode: value("Pincode"), course: value("Course"),
     batch: value("Batch"), startTime: value("Start Time"), endTime: value("End Time"), enrollmentMonth: value("Enrollment Month"),
     enrollmentYear: value("Enrollment Year"), admissionDate: value("Admission Date"), courseDuration: value("Course Duration"),
-    totalCourseFee: totalCourseFee, discount: discount, finalFee: normalizeOptionalMoney_(value("Final Fee")) || 0,
+    totalCourseFee: totalCourseFee, discount: discount, finalFee: finalFee,
     remarks: value("Remarks"), createdAt: value("Created At"), yearOfPassing: value("Year of Passing"),
     collegeName: value("College Name"), degreeCourse: value("Degree / Course"),
     otherProgramDetails: value("Other Program Details")
@@ -278,10 +270,14 @@ function mapAdmissionRow_(row, columns) {
 
 function mapPaymentRow_(row, columns) {
   const value = function(header) { return String(row[columns[header]] || "").trim(); };
+  const amountPaid = normalizeOptionalMoney_(value("Amount Paid"));
+  if (amountPaid === null) throw new Error('Payment "' + value("Receipt ID") + '" has no amount.');
+  const paymentDate = normalizeComparableDateOnly_(value("Payment Date"));
+  if (!paymentDate) throw new Error('Payment "' + value("Receipt ID") + '" has an invalid payment date.');
   return {
     receiptId: value("Receipt ID"), studentId: value("Student ID"), studentName: value("Student Name"), course: value("Course"),
-    batch: value("Batch"), enrollmentMonth: value("Enrollment Month"), enrollmentYear: value("Enrollment Year"), paymentDate: value("Payment Date"),
-    feeType: value("Fee Type"), amountPaid: normalizeOptionalMoney_(value("Amount Paid")) || 0, paymentMode: value("Payment Mode"),
+    batch: value("Batch"), enrollmentMonth: value("Enrollment Month"), enrollmentYear: value("Enrollment Year"), paymentDate: paymentDate,
+    feeType: value("Fee Type"), amountPaid: amountPaid, paymentMode: value("Payment Mode"),
     previousPaid: normalizeOptionalMoney_(value("Previous Paid")) || 0, totalPaid: normalizeOptionalMoney_(value("Total Paid")) || 0,
     balance: normalizeOptionalMoney_(value("Balance")) || 0, createdBy: value("Created By"), createdAt: value("Created At"), remarks: value("Remarks")
   };
@@ -398,7 +394,7 @@ function matchesCourseFilter_(courseName, filter) {
 }
 
 function sumBy_(records, field) {
-  return records.reduce(function(total, record) { return total + Number(record[field] || 0); }, 0);
+  return sumPaymentAmounts_(records.map(function(record) { return { amountPaid: record[field] }; }));
 }
 
 function groupCountBy_(records, field) {
@@ -409,6 +405,10 @@ function groupCountBy_(records, field) {
 
 function groupSumBy_(records, groupField, valueField) {
   const groups = {};
-  records.forEach(function(record) { const label = record[groupField] || "Unknown"; groups[label] = (groups[label] || 0) + Number(record[valueField] || 0); });
-  return Object.keys(groups).sort().map(function(label) { return { label: label, value: roundMoney_(groups[label]) }; });
+  records.forEach(function(record) {
+    const label = record[groupField] || "Unknown";
+    groups[label] = (groups[label] || 0) + moneyToPaise_(record[valueField]);
+    if (!Number.isSafeInteger(groups[label])) throw new Error("Collection total exceeds the supported amount.");
+  });
+  return Object.keys(groups).sort().map(function(label) { return { label: label, value: groups[label] / 100 }; });
 }

@@ -214,10 +214,12 @@ function rebuildIndexes_() {
     const courses = getRegularCourses_();
     const studentCourses = courses.slice();
     const otherPrograms = getCourseCodes_().find(function(course) {
-      return normalizeCourseName_(course.courseName) === "other programs" && normalizeActive_(course.active) === "Yes";
+      return normalizeCourseName_(course.courseName) === "other programs";
     });
-    if (otherPrograms) studentCourses.push(otherPrograms);
-    const payments = readPaymentsForCourses_(courses, {});
+    if (otherPrograms && !studentCourses.some(function(course) {
+      return normalizeCourseName_(course.courseName) === "other programs";
+    })) studentCourses.push(otherPrograms);
+    const payments = readPaymentsForCourses_(studentCourses, {});
     const students = enrichStudentsWithPayments_(readStudentsForCourses_(studentCourses, {}), payments);
     const visitors = readVisitorSourceRecords_();
     const followUps = readFollowUpSourceRecords_();
@@ -228,6 +230,7 @@ function rebuildIndexes_() {
     const followUpSheet = getFollowUpsIndexSheet_();
     const enquirySheet = indexConfigured ? getEnquiriesIndexSheet_() : null;
     const result = validateIndexes_(students, payments, visitors, followUps, enquiries);
+    properties.setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "rebuild");
     ensureIndexHeaders_(studentSheet, CONFIG.STUDENTS_INDEX_HEADERS);
     ensureIndexHeaders_(paymentSheet, CONFIG.PAYMENT_HEADERS);
     ensureIndexHeaders_(visitorSheet, CONFIG.VISITOR_HEADERS);
@@ -238,6 +241,7 @@ function rebuildIndexes_() {
     replaceIndexRecords_(visitorSheet, CONFIG.VISITOR_HEADERS, visitors, buildVisitorRow_);
     replaceIndexRecords_(followUpSheet, CONFIG.FOLLOW_UP_HEADERS, followUps, buildFollowUpRow_);
     if (enquirySheet) replaceIndexRecords_(enquirySheet, CONFIG.ENQUIRY_HEADERS, enquiries, buildEnquiryRow_);
+    properties.deleteProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_);
     result.visitorCount = visitors.length;
     result.followUpCount = followUps.length;
     return result;
@@ -414,8 +418,19 @@ function validateIndexes_(students, payments, visitors, followUps, enquiries) {
   const visitorIds = {};
   const followUpIds = {};
   const enquiryIds = {};
+  let unlinkedOtherProgramPayments = 0;
   students.forEach(function(student) { if (studentIds[student.studentId]) throw new Error("Duplicate Student ID in source data."); studentIds[student.studentId] = true; });
-  payments.forEach(function(payment) { if (receiptIds[payment.receiptId]) throw new Error("Duplicate Receipt ID in source data."); receiptIds[payment.receiptId] = true; if (!studentIds[payment.studentId]) throw new Error('Payment without matching student: "' + payment.receiptId + '".'); });
+  payments.forEach(function(payment) {
+    if (!payment.receiptId || receiptIds[payment.receiptId]) throw new Error("Missing or duplicate Receipt ID in source data.");
+    receiptIds[payment.receiptId] = true;
+    if (!studentIds[payment.studentId]) {
+      if (normalizeCourseName_(payment.course) === "other programs" && payment.studentId === payment.receiptId) {
+        unlinkedOtherProgramPayments++;
+      } else {
+        throw new Error('Payment without matching student: "' + payment.receiptId + '".');
+      }
+    }
+  });
   (visitors || []).forEach(function(visitor) { if (visitorIds[visitor.visitorId]) throw new Error("Duplicate Visitor ID in source data."); visitorIds[visitor.visitorId] = true; });
   (followUps || []).forEach(function(followUp) {
     if (followUpIds[followUp.followUpId]) throw new Error("Duplicate Follow-up ID in source data.");
@@ -423,5 +438,5 @@ function validateIndexes_(students, payments, visitors, followUps, enquiries) {
     if (!visitorIds[followUp.visitorId]) throw new Error('Follow-up without matching visitor: "' + followUp.followUpId + '".');
   });
   (enquiries || []).forEach(function(enquiry) { if (!enquiry.enquiryId || enquiryIds[enquiry.enquiryId]) throw new Error("Missing or duplicate Enquiry ID in source data."); enquiryIds[enquiry.enquiryId] = true; });
-  return { studentCount: students.length, paymentCount: payments.length, enquiryCount: (enquiries || []).length, duplicateStudentIds: 0, duplicateReceiptIds: 0, paymentsWithoutStudents: 0, duplicateVisitorIds: 0, duplicateFollowUpIds: 0, followUpsWithoutVisitors: 0, duplicateEnquiryIds: 0 };
+  return { studentCount: students.length, paymentCount: payments.length, enquiryCount: (enquiries || []).length, duplicateStudentIds: 0, duplicateReceiptIds: 0, paymentsWithoutStudents: unlinkedOtherProgramPayments, unlinkedOtherProgramPayments: unlinkedOtherProgramPayments, duplicateVisitorIds: 0, duplicateFollowUpIds: 0, followUpsWithoutVisitors: 0, duplicateEnquiryIds: 0 };
 }

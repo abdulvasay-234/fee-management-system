@@ -4442,6 +4442,10 @@ select:focus-visible {
   font-weight: 500;
 }
 
+.payment-form__actions a.button {
+  text-decoration: none;
+}
+
 .student-lookup {
   margin-top: 0;
 }
@@ -4828,7 +4832,7 @@ select:focus-visible {
 
 .student-summary-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.4fr);
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -4853,12 +4857,6 @@ select:focus-visible {
   border-radius: var(--radius-md);
 }
 
-.student-summary-card--attention .student-summary-card__icon {
-  color: #725500;
-  background: var(--color-yellow-100);
-  border-color: #f4df87;
-}
-
 .student-summary-card span {
   display: block;
   margin-bottom: 3px;
@@ -4870,12 +4868,119 @@ select:focus-visible {
 
 .student-summary-card strong {
   display: block;
-  overflow: hidden;
   color: var(--color-navy-900);
   font-family: var(--font-display);
   font-size: 18px;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.student-summary-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.student-summary-card--courses {
+  align-items: flex-start;
+}
+
+.student-course-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-course-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.student-course-summary__list--scrollable {
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.student-course-summary li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.student-course-summary li span {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-transform: none;
+}
+
+.student-course-summary li strong {
+  flex: none;
+  font-size: 13px;
+}
+
+.student-course-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  margin-bottom: var(--space-3);
+}
+
+.student-course-nav__label {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.student-course-nav__list {
+  display: flex;
+  min-width: 0;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding: 2px 0 5px;
+}
+
+.student-course-nav__item {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  color: var(--color-navy-900);
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.student-course-nav__item--active {
+  color: var(--color-white);
+  background: var(--color-navy-900);
+  border-color: var(--color-navy-900);
+}
+
+.student-course-nav__item small {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.student-course-nav__notice {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .student-filters {
@@ -4890,17 +4995,15 @@ select:focus-visible {
 
 .student-filters form {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) repeat(4, minmax(130px, 1fr));
+  grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) auto;
   gap: var(--space-3);
   align-items: end;
 }
 
 .student-filters__actions {
   display: flex;
-  grid-column: 1 / -1;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding-top: var(--space-1);
 }
 
 .students-results-heading {
@@ -4920,7 +5023,12 @@ select:focus-visible {
 }
 
 .students-table {
-  min-width: 1320px;
+  min-width: 850px;
+}
+
+.students-table th,
+.students-table td {
+  padding: 11px 10px;
 }
 
 .students-table td {
@@ -4929,13 +5037,16 @@ select:focus-visible {
 
 .students-table td:nth-child(2),
 .students-table td:nth-child(4),
-.students-table td:nth-child(5) {
+.students-table td:nth-child(7) {
   white-space: normal;
 }
 
-.students-table__balance {
-  color: var(--color-red-700) !important;
-  font-weight: 700 !important;
+.students-table__secondary {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .students-table__actions {
@@ -5168,7 +5279,7 @@ select:focus-visible {
 
 .payment-summary-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.4fr);
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -5210,11 +5321,62 @@ select:focus-visible {
 
 .payment-summary-card strong {
   display: block;
-  overflow: hidden;
   color: var(--color-navy-900);
   font-family: var(--font-display);
   font-size: 18px;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.payment-summary-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.payment-summary-card--courses {
+  align-items: flex-start;
+}
+
+.payment-course-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-course-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payment-course-summary__list--scrollable {
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.payment-course-summary li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.payment-course-summary li span {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-transform: none;
+}
+
+.payment-course-summary li strong {
+  flex: none;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -5806,7 +5968,10 @@ select:focus-visible {
     width: 100%;
   }
 
-  .student-summary-cards,
+  .student-summary-cards {
+    grid-template-columns: 1fr;
+  }
+
   .student-filters form {
     grid-template-columns: 1fr;
   }
@@ -5823,6 +5988,63 @@ select:focus-visible {
 
   .student-filters__actions .button {
     width: 100%;
+  }
+
+  .student-course-nav {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .student-course-nav__list {
+    width: 100%;
+  }
+
+  .students-table,
+  .students-table tbody,
+  .students-table tr {
+    display: block;
+    min-width: 0;
+  }
+
+  .students-table thead {
+    display: none;
+  }
+
+  .students-table tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .students-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .students-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 6px var(--space-3);
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .students-table td::before {
+    flex: 0 0 110px;
+    color: var(--color-text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+    content: attr(data-label);
+  }
+
+  .students-table__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .student-detail-modal {

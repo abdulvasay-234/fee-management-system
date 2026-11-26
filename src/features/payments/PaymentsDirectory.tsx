@@ -1,5 +1,5 @@
 import {
-  CalendarDays,
+  BookOpenCheck,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -18,6 +18,7 @@ import { toPaymentSnapshot } from '../students/studentWorkflow'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import { PaymentDetailsModal } from './PaymentDetailsModal'
+import { summarizePaymentOverview } from './paymentOverview'
 
 type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'name-asc' | 'name-desc'
 
@@ -37,7 +38,7 @@ const initialFilters: PaymentFilters = {
 
 const pageSize = 10
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
-  style: 'currency', currency: 'INR', maximumFractionDigits: 0,
+  style: 'currency', currency: 'INR', maximumFractionDigits: 2,
 })
 
 const statusOptions = [
@@ -66,11 +67,6 @@ function loadPaymentsData() {
   return paymentsLoadPromise
 }
 
-function getLocalDate() {
-  const date = new Date()
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
 function sortPayments(payments: PaymentRecord[], sort: SortOption) {
   return [...payments].sort((left, right) => {
     if (sort === 'date-desc') return right.paymentDate.localeCompare(left.paymentDate)
@@ -83,12 +79,37 @@ function sortPayments(payments: PaymentRecord[], sort: SortOption) {
 }
 
 function toStudent(record: StudentRecord): Student {
+  const { finalFee, totalPaid, balance } = record
+  if (typeof finalFee !== 'number' || typeof totalPaid !== 'number' || typeof balance !== 'number'
+    || !Number.isFinite(finalFee) || !Number.isFinite(totalPaid) || !Number.isFinite(balance)) {
+    throw new Error('An admission is missing financial totals. Please reconcile the records.')
+  }
   return {
     ...record,
     discountPercentage: record.totalCourseFee ? (record.discount / record.totalCourseFee) * 100 : 0,
-    totalPaid: record.totalPaid ?? 0,
-    balance: record.balance ?? record.finalFee,
+    totalPaid,
+    balance,
   }
+}
+
+function CourseAmounts({ courses, metric, isLoading, loadError }: {
+  courses: ReturnType<typeof summarizePaymentOverview>['courses']
+  metric: 'totalFees' | 'outstanding'
+  isLoading: boolean
+  loadError: string
+}) {
+  if (isLoading) return <small>Loading courses…</small>
+  if (loadError) return <small>Unavailable</small>
+  if (!courses.length) return <small>No admissions yet</small>
+
+  return (
+    <>
+      <ul className={courses.length > 4 ? 'payment-course-summary__list--scrollable' : undefined} tabIndex={courses.length > 4 ? 0 : undefined} aria-label={metric === 'outstanding' ? 'Outstanding by course' : 'Final fees by course'}>
+        {courses.map((course) => <li key={course.name}><span>{course.name}</span><strong>{currencyFormatter.format(course[metric])}</strong></li>)}
+      </ul>
+      {courses.length > 4 && <small>Scroll for more courses</small>}
+    </>
+  )
 }
 
 export function PaymentsDirectory() {
@@ -106,8 +127,11 @@ export function PaymentsDirectory() {
     let active = true
     void loadPaymentsData().then(([paymentRecords, studentRecords]) => {
       if (!active) return
-      setPayments(paymentRecords.map((payment: ApiPaymentRecord) => ({ ...payment, paymentId: payment.receiptId })))
-      setStudents(studentRecords.map(toStudent))
+      const loadedPayments = paymentRecords.map((payment: ApiPaymentRecord) => ({ ...payment, paymentId: payment.receiptId }))
+      const loadedStudents = studentRecords.map(toStudent)
+      summarizePaymentOverview(loadedPayments, loadedStudents)
+      setPayments(loadedPayments)
+      setStudents(loadedStudents)
     }).catch((error: unknown) => {
       if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load payments.')
     }).finally(() => { if (active) setIsLoading(false) })
@@ -131,10 +155,7 @@ export function PaymentsDirectory() {
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / pageSize))
   const currentPage = Math.min(page, totalPages)
   const pagePayments = filteredPayments.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const totalCollected = payments.reduce((sum, payment) => sum + payment.amountPaid, 0)
-  const todaysCollection = payments.filter((payment) => payment.paymentDate === getLocalDate()).reduce((sum, payment) => sum + payment.amountPaid, 0)
-  const outstandingFees = students.reduce((sum, student) => sum + student.balance, 0)
-  const studentsWithPendingBalance = students.filter((student) => student.balance > 0).length
+  const summary = summarizePaymentOverview(payments, students)
 
   function updateFilter(field: keyof PaymentFilters, value: string) {
     setFilters((current) => ({ ...current, [field]: value }))
@@ -157,10 +178,22 @@ export function PaymentsDirectory() {
   return (
     <>
       <section className="payment-summary-cards" aria-label="Payments summary">
-        <Card className="payment-summary-card"><div className="payment-summary-card__icon"><IndianRupee aria-hidden="true" size={19} /></div><div><span>Total Collection</span><strong>{currencyFormatter.format(totalCollected)}</strong></div></Card>
-        <Card className="payment-summary-card"><div className="payment-summary-card__icon"><CalendarDays aria-hidden="true" size={19} /></div><div><span>Today's Collection</span><strong>{currencyFormatter.format(todaysCollection)}</strong></div></Card>
-        <Card className="payment-summary-card payment-summary-card--attention"><div className="payment-summary-card__icon"><WalletCards aria-hidden="true" size={19} /></div><div><span>Outstanding Amount</span><strong>{currencyFormatter.format(outstandingFees)}</strong></div></Card>
-        <Card className="payment-summary-card"><div className="payment-summary-card__icon"><UsersRound aria-hidden="true" size={19} /></div><div><span>Students With Pending Balance</span><strong>{studentsWithPendingBalance}</strong></div></Card>
+        <Card className="payment-summary-card">
+          <div className="payment-summary-card__icon"><IndianRupee aria-hidden="true" size={19} /></div>
+          <div><span>Total Collection</span><strong>{isLoading || loadError ? '—' : currencyFormatter.format(summary.totalCollected)}</strong><small>Payments received</small><small>Total final fees: {isLoading || loadError ? '—' : currencyFormatter.format(summary.totalFees)}</small></div>
+        </Card>
+        <Card className="payment-summary-card payment-summary-card--courses">
+          <div className="payment-summary-card__icon"><BookOpenCheck aria-hidden="true" size={19} /></div>
+          <div className="payment-course-summary"><span>Outstanding by Course</span><small>Positive admission balances</small><CourseAmounts courses={summary.courses} metric="outstanding" isLoading={isLoading} loadError={loadError} /></div>
+        </Card>
+        <Card className="payment-summary-card payment-summary-card--attention">
+          <div className="payment-summary-card__icon"><WalletCards aria-hidden="true" size={19} /></div>
+          <div><span>Outstanding Amount</span><strong>{isLoading || loadError ? '—' : currencyFormatter.format(summary.outstanding)}</strong></div>
+        </Card>
+        <Card className="payment-summary-card payment-summary-card--courses">
+          <div className="payment-summary-card__icon"><UsersRound aria-hidden="true" size={19} /></div>
+          <div className="payment-course-summary"><span>Students With Pending Balance</span><strong>{isLoading || loadError ? '—' : summary.pendingAdmissions}</strong><small>Admission IDs with balance due</small><small>Total final fees by course (all admissions)</small><CourseAmounts courses={summary.courses} metric="totalFees" isLoading={isLoading} loadError={loadError} /></div>
+        </Card>
       </section>
 
       <Card className="payments-filters">

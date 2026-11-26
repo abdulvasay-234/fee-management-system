@@ -469,7 +469,7 @@ describe('Enquiry conversion safety', () => {
   it('keeps existing payment enrichment when rebuilding Students Index from admission source', () => {
     const fixture = setup()
     fixture.setPayments([{
-      studentId: FIRST_TEST_STUDENT_ID, receiptId: 'FEE-001', paymentDate: '2026-10-01', totalPaid: 5000, balance: 39000,
+      studentId: FIRST_TEST_STUDENT_ID, receiptId: 'FEE-001', paymentDate: '2026-10-01', amountPaid: 5000, totalPaid: 5000, balance: 39000,
     }])
     fixture.convert()
     expect(fixture.indexedStudent).toMatchObject({

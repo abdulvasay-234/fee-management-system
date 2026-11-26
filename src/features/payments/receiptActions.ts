@@ -96,6 +96,38 @@ export function createWhatsAppUrl(
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
 }
 
+export function createPaymentAcknowledgementUrl(
+  admission: AdmissionSnapshot,
+  payment: PaymentRecord,
+) {
+  const phone = normalizeWhatsAppNumber(admission.mobileNumber)
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(payment.paymentDate)
+    ? new Date(`${payment.paymentDate}T00:00:00Z`)
+    : null
+  if (!phone || !date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== payment.paymentDate) {
+    return null
+  }
+
+  let nextPayment = 'No further payment is due.'
+  if (payment.balance > 0) {
+    date.setUTCDate(date.getUTCDate() + 20)
+    if (date.getUTCFullYear() > 9999) return null
+    nextPayment = `Next Payment Date: ${formatReceiptDate(date.toISOString().slice(0, 10))}`
+  }
+  const message = `LSA - ${payment.course} - Payment Acknowledgement - ${payment.studentName}
+
+Amount Paid: ${formatReceiptCurrency(payment.amountPaid)}
+Payment Date: ${formatReceiptDate(payment.paymentDate)}
+Course: ${payment.course}
+Balance: ${formatReceiptCurrency(payment.balance)}
+${nextPayment}
+
+Thank you,
+Lords Skill Academy`
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
+
 export async function downloadReceiptPdf(
   receiptElement: HTMLElement,
   receiptId: string,

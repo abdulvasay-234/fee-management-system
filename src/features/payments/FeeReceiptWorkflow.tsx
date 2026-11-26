@@ -2,22 +2,27 @@ import {
   Banknote,
   CheckCircle2,
   FileText,
+  MessageCircle,
   Search,
 } from 'lucide-react'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, Input, Textarea } from '../../components/ui'
-import { formatAmountInput, parseAmount } from '../../utils/amount'
+import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui'
+import { formatAmountInput, parseAmount, sumMoney } from '../../utils/amount'
 import { createPayment, fetchStudents } from '../../services/api'
 import type { Student } from '../students/studentTypes'
 import { toPaymentSnapshot } from '../students/studentWorkflow'
 import { WorkflowProgress } from '../workflow/WorkflowProgress'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
+import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
+import { createPaymentAcknowledgementUrl } from './receiptActions'
 
 interface PaymentFormData {
   amountPaid: string
   paymentDate: string
+  feeType: string
+  paymentMode: string
   remarks: string
 }
 
@@ -31,10 +36,9 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
 })
 
 function getLocalDate() {
-  const date = new Date()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
 }
 
 function formatCurrency(value: number) {
@@ -109,11 +113,13 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
 
 function PaymentForm({ admission, onRecorded }: {
   admission: AdmissionSnapshot
-  onRecorded: (payment: PaymentRecord) => void
+  onRecorded: (payment: PaymentRecord, warning?: string) => void
 }) {
   const initialForm: PaymentFormData = {
     amountPaid: '',
     paymentDate: getLocalDate(),
+    feeType: '',
+    paymentMode: '',
     remarks: '',
   }
   const [formData, setFormData] = useState(initialForm)
@@ -123,8 +129,8 @@ function PaymentForm({ admission, onRecorded }: {
 
   const previousPaid = admission.previousPaid
   const currentPayment = parseAmount(formData.amountPaid)
-  const totalPaid = previousPaid + currentPayment
-  const balance = Math.max(admission.finalFee - totalPaid, 0)
+  const totalPaid = sumMoney([previousPaid, currentPayment])
+  const balance = sumMoney([admission.finalFee, -totalPaid])
 
   function updateField(field: keyof PaymentFormData, value: string) {
     setFormData((current) => ({ ...current, [field]: value }))
@@ -146,7 +152,7 @@ function PaymentForm({ admission, onRecorded }: {
 
     if (!formData.amountPaid || !Number.isFinite(amount) || amount <= 0) {
       nextErrors.amountPaid = 'Enter a valid payment amount greater than zero.'
-    } else if (amount > admission.finalFee - previousPaid) {
+    } else if (Math.round(amount * 100) > Math.round(admission.finalFee * 100) - Math.round(previousPaid * 100)) {
       nextErrors.amountPaid = 'Payment cannot exceed the remaining balance.'
     }
     if (!formData.paymentDate) nextErrors.paymentDate = 'Select a payment date.'
@@ -174,6 +180,8 @@ function PaymentForm({ admission, onRecorded }: {
         course: admission.course,
         amountPaid: currentPayment,
         paymentDate: formData.paymentDate,
+        feeType: formData.feeType,
+        paymentMode: formData.paymentMode,
         remarks: formData.remarks.trim(),
       })
       const { receipt } = result
@@ -187,16 +195,16 @@ function PaymentForm({ admission, onRecorded }: {
         enrollmentMonth: admission.enrollmentMonth,
         enrollmentYear: admission.enrollmentYear,
         paymentDate: formData.paymentDate,
-        feeType: '',
+        feeType: formData.feeType,
         amountPaid: currentPayment,
-        paymentMode: '',
+        paymentMode: formData.paymentMode,
         previousPaid: receipt.previousPaid,
         totalPaid: receipt.totalPaid,
         balance: receipt.balance,
         createdBy: '',
         createdAt: new Date().toISOString(),
         remarks: formData.remarks,
-      })
+      }, result.indexWarning)
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save the payment.')
     } finally {
@@ -215,6 +223,8 @@ function PaymentForm({ admission, onRecorded }: {
           <div className="payment-form__fields">
             <Input id="amountPaid" name="amountPaid" label="Amount Paid" required inputMode="decimal" placeholder="0.00" value={formData.amountPaid} error={errors.amountPaid} onChange={handleAmountChange} />
             <Input id="paymentDate" name="paymentDate" label="Payment Date" required type="date" value={formData.paymentDate} error={errors.paymentDate} onChange={handleChange} />
+            <Select id="feeType" name="feeType" label="Fee Type" options={feeTypeOptions} value={formData.feeType} onChange={handleChange} />
+            <Select id="paymentMode" name="paymentMode" label="Payment Mode" options={paymentModeOptions} value={formData.paymentMode} onChange={handleChange} />
             <Textarea containerClassName="payment-form__full" id="paymentRemarks" name="remarks" label="Remarks" rows={3} value={formData.remarks} onChange={handleChange} />
           </div>
         </Card>
@@ -240,11 +250,15 @@ function PaymentSuccess({
   admission,
   onDone,
   payment,
+  warning,
 }: {
   admission: AdmissionSnapshot
   onDone: () => void
   payment: PaymentRecord
+  warning?: string
 }) {
+  const whatsappUrl = createPaymentAcknowledgementUrl(admission, payment)
+
   return (
     <Card className="payment-success">
       <header className="payment-card__header">
@@ -261,7 +275,18 @@ function PaymentSuccess({
         <div><dt>Total Paid</dt><dd>{formatCurrency(payment.totalPaid)}</dd></div>
         <div><dt>Pending Balance</dt><dd>{formatCurrency(payment.balance)}</dd></div>
       </dl>
-      <div className="payment-form__actions"><Button onClick={onDone}>Done</Button></div>
+      {warning && <p className="receipt-actions__error" role="alert">Payment saved, but {warning} Do not submit it again; contact an administrator.</p>}
+      <div className="payment-form__actions">
+        <Button onClick={onDone}>Done</Button>
+        {whatsappUrl ? (
+          <a className="button button--secondary" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+            <MessageCircle aria-hidden="true" size={16} />Send WhatsApp Message
+          </a>
+        ) : (
+          <Button variant="secondary" disabled><MessageCircle aria-hidden="true" size={16} />Send WhatsApp Message</Button>
+        )}
+      </div>
+      {!whatsappUrl && <p className="receipt-actions__error" role="alert">WhatsApp is unavailable. Check the student's mobile number and payment date.</p>}
     </Card>
   )
 }
@@ -270,6 +295,7 @@ export function FeeReceiptWorkflow() {
   const location = useLocation()
   const navigate = useNavigate()
   const { admission, payment, clearWorkflow, setAdmission, setPayment } = useWorkflow()
+  const [paymentWarning, setPaymentWarning] = useState('')
   const routeState = location.state as WorkflowRouteState
   const hasSelectedStudent = Boolean(
     (routeState?.fromAdmission || routeState?.fromStudent) && admission,
@@ -290,13 +316,14 @@ export function FeeReceiptWorkflow() {
         <PaymentSuccess
           admission={admission}
           payment={payment}
+          warning={paymentWarning}
           onDone={() => {
             clearWorkflow()
             navigate('/payment-history')
           }}
         />
       ) : (
-        <PaymentForm admission={admission} onRecorded={setPayment} />
+        <PaymentForm admission={admission} onRecorded={(record, warning) => { setPayment(record); setPaymentWarning(warning ?? '') }} />
       )}
     </>
   )

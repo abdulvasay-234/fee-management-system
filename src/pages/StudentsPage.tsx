@@ -13,7 +13,7 @@ export function StudentsPage() {
           <span className="page__eyebrow">LSA WORKSPACE</span>
           <h1 className="page__title">Admissions</h1>
           <p className="page__description">
-            Manage admissions, student details, and outstanding fee balances.
+            Manage admissions, courses, batches, and student records.
           </p>
         </div>
         <Button onClick={() => navigate('/new-admission')}>
