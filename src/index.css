@@ -1613,6 +1613,18 @@ select:focus-visible {
   text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
 }
 
+.auth-brand span a {
+  color: #ff6b35;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.auth-brand span a:hover {
+  border-bottom-color: #ff6b35;
+  text-shadow: 0 0 20px rgba(255, 107, 53, 0.8);
+}
+
 .auth-brand h1 {
   max-width: 600px;
   margin: 0;
@@ -1809,6 +1821,20 @@ select:focus-visible {
   text-shadow: 0 0 10px rgba(255, 107, 53, 0.3);
   border-top: 1px solid rgba(255, 107, 53, 0.2);
   padding-top: var(--space-4);
+}
+
+.auth-panel small a {
+  color: rgba(255, 107, 53, 0.9);
+  text-decoration: none;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.auth-panel small a:hover {
+  color: #ff6b35;
+  border-bottom-color: #ff6b35;
+  text-shadow: 0 0 15px rgba(255, 107, 53, 0.6);
 }
 
 .auth-message {
