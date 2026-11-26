@@ -33,7 +33,6 @@ export function LoginScreen() {
         <div>
           <span><a href="https://hackunion.in" target="_blank" rel="noopener noreferrer">Application supported by HackUnion</a></span>
           <h1>Fee Management</h1>
-          <p className="auth-brand__subtitle">LSA - Staff Access Only</p>
         </div>
       </aside>
       <section className="auth-content" aria-labelledby="login-title">
@@ -59,7 +58,7 @@ export function AccessDeniedScreen() {
     <main className="auth-screen">
       <aside className="auth-brand" aria-label="LSA">
         <img src={lsaLogo} alt="LSA" />
-        <div><span><a href="https://hackunion.in" target="_blank" rel="noopener noreferrer">Application supported by HackUnion</a></span><h1>Fee Management</h1><p className="auth-brand__subtitle">LSA - Staff Access Only</p></div>
+        <div><span><a href="https://hackunion.in" target="_blank" rel="noopener noreferrer">Application supported by HackUnion</a></span><h1>Fee Management</h1></div>
       </aside>
       <section className="auth-content" aria-labelledby="access-denied-title">
         <div className="auth-panel">
