@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { AnimatedGridBackground } from '../components/AnimatedGridBackground'
 import { Button } from '../components/ui/Button'
 import { useAuth } from './useAuth'
 
@@ -28,6 +29,7 @@ export function LoginScreen() {
 
   return (
     <main className="auth-screen-new">
+      <AnimatedGridBackground />
       <div className="auth-container">
         <div className="auth-header">
           <img src={lsaLogo} alt="LSA" className="auth-header__logo" />
@@ -69,6 +71,7 @@ export function AccessDeniedScreen() {
   const { email, signOut } = useAuth()
   return (
     <main className="auth-screen-new">
+      <AnimatedGridBackground />
       <div className="auth-container">
         <div className="auth-header">
           <img src={lsaLogo} alt="LSA" className="auth-header__logo" />
