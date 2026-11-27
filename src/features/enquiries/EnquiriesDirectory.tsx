@@ -108,7 +108,7 @@ export function EnquiriesDirectory() {
   }
 
   function handleConversionOutcomeUnknown() {
-    setNotice({ message: 'Conversion response is unconfirmed. The enquiry list is being refreshed; verify the Admission record before any further attempt.', warning: true })
+    setNotice({ message: 'Conversion response is unconfirmed. The enquiry list is being refreshed. Use Retry Conversion in the open form to recover the original request; do not register a separate admission.', warning: true })
     void refresh()
   }
 

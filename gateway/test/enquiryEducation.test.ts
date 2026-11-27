@@ -254,6 +254,7 @@ describe('Enquiry education persistence', () => {
 
 describe('Enquiry API education compatibility', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
     vi.resetModules()
@@ -267,6 +268,57 @@ describe('Enquiry API education compatibility', () => {
     auth.setIdToken('synthetic-test-token')
     return import(fileURLToPath(new URL('../../src/services/api.ts', import.meta.url)))
   }
+
+  const conversionInput = {
+    enquiryId: 'ENQ-000001',
+    admission: {
+      fullName: payload.fullName, fathersName: '', mothersName: '', dateOfBirth: '', gender: '',
+      mobileNumber: payload.mobileNumber, email: '', address: '', city: 'Hyderabad',
+      collegeName: payload.college, state: 'Telangana', pincode: '500028',
+      degreeCourse: 'B.Tech - CSE', yearOfPassing: 'Currently Pursuing',
+      course: payload.courseInterestedIn, batch: '08', startTime: '17:30', endTime: '19:00',
+      admissionDate: '2026-11-28', courseDuration: '3 Months', totalCourseFee: 1000, discount: 0, remarks: '',
+    },
+  }
+
+  it('waits for a conversion that completes after the old 15-second deadline', async () => {
+    vi.useFakeTimers()
+    const api = await loadApi()
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>((resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+      setTimeout(() => resolve(Response.json({
+        success: true, data: { enquiryId: 'ENQ-000001', admissionId: '26020801', studentId: '26020801' },
+      })), 20_000)
+    })))
+    const pending = api.convertEnquiry(conversionInput)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect((await pending).data?.studentId).toBe('26020801')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('times out an unresolved conversion explicitly without retrying automatically', async () => {
+    vi.useFakeTimers()
+    const api = await loadApi()
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    })))
+    const pending = api.convertEnquiry(conversionInput).catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(35_000)
+    const error = await pending
+    expect(error).toBeInstanceOf(api.ApiOutcomeUnknownError)
+    if (!(error instanceof Error)) throw new Error('Expected an explicit conversion error.')
+    expect(error.message).toContain('conversion request timed out')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the backend conversion error so the recovery warning is actionable', async () => {
+    const api = await loadApi()
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      success: false, error: 'Enquiry conversion details differ from the reserved attempt.',
+    })))
+    await expect(api.convertEnquiry(conversionInput)).rejects.toThrow('Enquiry conversion details differ from the reserved attempt.')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
 
   it('encodes both create and status updates and normalizes subsequent API reads', async () => {
     const api = await loadApi()

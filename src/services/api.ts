@@ -3,6 +3,7 @@ import { encodeEnquiryPayload, normalizeEnquiryRecord } from '../features/enquir
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const REQUEST_TIMEOUT_MS = 15_000
+const CONVERSION_TIMEOUT_MS = 35_000
 
 export class ApiHttpError extends Error {
   readonly status: number
@@ -242,6 +243,7 @@ export interface ConvertEnquiryPayload {
 
 export interface ConvertEnquiryResponse {
   success: true
+  recoveredAdmission?: boolean
   data?: { enquiryId: string; admissionId: string; studentId: string }
   partial?: boolean
   studentIndexSynchronized?: boolean
@@ -325,7 +327,7 @@ async function request<T>(
 ): Promise<T> {
   if (!credential) throw new ApiHttpError('Authentication required.', 401)
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeoutId = window.setTimeout(() => controller.abort(), outcomeMayBeUnknown === 'conversion' ? CONVERSION_TIMEOUT_MS : REQUEST_TIMEOUT_MS)
 
   try {
     const headers = new Headers(init.headers)
@@ -361,7 +363,10 @@ async function request<T>(
       if (outcomeMayBeUnknown === 'payment') {
         throw new ApiOutcomeUnknownError(`Payment outcome could not be confirmed${error instanceof Error ? `: ${error.message}` : '.'} Check the payment history before submitting again; contact an administrator if it is unclear.`)
       }
-      throw new ApiOutcomeUnknownError('The conversion response was not confirmed. Its outcome may be unknown. Do not submit again until the enquiry and admission records have been checked.')
+      const reason = error instanceof DOMException && error.name === 'AbortError'
+        ? 'The conversion request timed out.'
+        : toUserMessage(error)
+      throw new ApiOutcomeUnknownError(`Conversion outcome could not be confirmed: ${reason} Retry the original conversion to recover safely; do not register a separate admission.`)
     }
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('The LSA API request timed out. Please try again.')

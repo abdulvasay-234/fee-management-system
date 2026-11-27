@@ -8,6 +8,7 @@ type ConversionResult = {
   partial?: boolean
   studentIndexSynchronized?: boolean
   studentIndexWarning?: string
+  recoveredAdmission?: boolean
   data: { enquiryId: string; admissionId: string; studentId: string }
   indexWarning?: string
   error?: string
@@ -447,7 +448,7 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.admissionSheet.rows[0][23]).toBe('Existing admission remarks')
     expect(fixture.admissionSheet.headers.slice(-3)).toEqual(['Enquiry ID', 'Conversion Fingerprint', 'Parents Phone Number'])
-    expect(fixture.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe(TEST_ENQUIRY_ID)
+    expect(fixture.admissionSheet.rows[0][fixture.admissionSheet.headers.indexOf('Enquiry ID')]).toBe(TEST_ENQUIRY_ID)
     expect(fixture.admissionSheet.rows[0][admissionColumn.conversionFingerprint]).toBeTruthy()
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
     expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
@@ -498,6 +499,72 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.studentIndexWrites).toBe(1)
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
     expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
+  })
+
+  it('recovers a conversion-key admission without an enquiry link instead of creating another with changed form data', () => {
+    const fixture = setup()
+    fixture.context.addStudent_({ ...fixture.admission, idempotencyKey: `convert-enquiry:${TEST_ENQUIRY_ID}` })
+    const before = [...fixture.admissionSheet.rows[0]]
+    const result = fixture.convert({ ...fixture.admission, batch: '08', totalCourseFee: 99000, degreeCourse: 'B.E. - CSE' })
+    expect(result).toMatchObject({ success: true, recoveredAdmission: true, data: { studentId: FIRST_TEST_STUDENT_ID } })
+    expect(fixture.admissionSheet.rows).toHaveLength(1)
+    for (let column = 0; column < before.length; column++) {
+      if (column !== admissionColumn.enquiryId && column !== admissionColumn.conversionFingerprint) {
+        expect(fixture.admissionSheet.rows[0][column]).toEqual(before[column])
+      }
+    }
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.admissionId]).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
+    expect(fixture.indexedStudent).toMatchObject({ studentId: FIRST_TEST_STUDENT_ID, batch: '01', totalCourseFee: 45000, finalFee: 44000 })
+    expect(fixture.indexedEnquiry?.admissionId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID }).data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.admissionSheet.rows).toHaveLength(1)
+  })
+
+  it('restores an already-linked legacy admission whose source conversion metadata is missing', () => {
+    const fixture = setup()
+    fixture.context.addStudent_({ ...fixture.admission, idempotencyKey: `convert-enquiry:${TEST_ENQUIRY_ID}` })
+    fixture.enquirySheet.rows[0][enquiryColumn.admissionId] = FIRST_TEST_STUDENT_ID
+    fixture.enquirySheet.rows[0][enquiryColumn.status] = 'Converted'
+    const result = fixture.context.convertEnquiry_({ enquiryId: TEST_ENQUIRY_ID })
+    expect(result.recoveredAdmission).toBe(true)
+    expect(result.data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.admissionSheet.rows[0][fixture.admissionSheet.headers.indexOf('Enquiry ID')]).toBe(TEST_ENQUIRY_ID)
+    expect(fixture.admissionSheet.rows).toHaveLength(1)
+  })
+
+  it('recovers a metadata write that committed but reported failure without appending an admission', () => {
+    const fixture = setup()
+    fixture.context.addStudent_({ ...fixture.admission, idempotencyKey: `convert-enquiry:${TEST_ENQUIRY_ID}` })
+    fixture.admissionSheet.failAfterNextWrite = true
+    expect(() => fixture.convert()).toThrow()
+    expect(fixture.convert().data.studentId).toBe(FIRST_TEST_STUDENT_ID)
+    expect(fixture.admissionSheet.rows).toHaveLength(1)
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
+  })
+
+  it.each(['missing', 'wrong-phone', 'different-enquiry'] as const)('does not bypass a %s source admission for a saved conversion key', (problem) => {
+    const fixture = setup()
+    fixture.context.addStudent_({ ...fixture.admission, idempotencyKey: `convert-enquiry:${TEST_ENQUIRY_ID}` })
+    if (problem === 'missing') fixture.admissionSheet.rows = []
+    if (problem === 'wrong-phone') fixture.admissionSheet.rows[0][fixture.admissionSheet.headers.indexOf('Mobile Number')] = TEST_PHONE_EDITED
+    if (problem === 'different-enquiry') {
+      fixture.admissionSheet.headers.push('Other Program Details', 'Enquiry ID', 'Conversion Fingerprint')
+      fixture.admissionSheet.rows[0][fixture.admissionSheet.headers.indexOf('Enquiry ID')] = SECOND_TEST_ENQUIRY_ID
+    }
+    const before = fixture.admissionSheet.rows.map((row) => [...row])
+    expect(() => fixture.convert()).toThrow(/saved conversion/)
+    expect(fixture.admissionSheet.rows).toEqual(before)
+    expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('New')
+  })
+
+  it('retains an unreadable conversion key instead of clearing it and creating a duplicate admission', () => {
+    const fixture = setup()
+    const key = `LSA_IDEMPOTENCY_convert-enquiry:${TEST_ENQUIRY_ID}`
+    fixture.properties.set(key, '{broken')
+    expect(() => fixture.convert()).toThrow(/unreadable/)
+    expect(fixture.properties.get(key)).toBe('{broken')
+    expect(fixture.admissionSheet.rows).toHaveLength(0)
   })
 
   it('saves incrementing YYCCBBSS admission IDs and starts a separate serial for a new batch or year', () => {

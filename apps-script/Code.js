@@ -2331,16 +2331,6 @@ function addStudent_(payload, conversion) {
         Boolean(conversion)
       );
 
-    if (conversion) {
-      ["Enquiry ID", "Conversion Fingerprint"].forEach(function(header) {
-        if (headerInfo.columns[header]) return;
-        const column = headerInfo.headers.length + 1;
-        sheet.getRange(1, column).setValue(header);
-        headerInfo.headers.push(header);
-        headerInfo.columns[header] = column;
-      });
-    }
-
     if (!headerInfo.columns["Parents Phone Number"]) {
       const column = headerInfo.headers.length + 1;
       sheet.getRange(1, column).setValue("Parents Phone Number");
@@ -3071,6 +3061,13 @@ function getAdmissionHeaderInfo_(
     sheet.getRange(1, headers.length + 1).setValue("Other Program Details");
     headers.push("Other Program Details");
   }
+  if (includeConversionFields) {
+    ["Enquiry ID", "Conversion Fingerprint"].forEach(function(header) {
+      if (headers.indexOf(header) !== -1) return;
+      sheet.getRange(1, headers.length + 1).setValue(header);
+      headers.push(header);
+    });
+  }
 
 
   const columns = {};
@@ -3795,6 +3792,49 @@ function findEnquiryAdmission_(sheet, enquiry, reservation) {
   return null;
 }
 
+function recoverRecordedEnquiryAdmission_(enquiry, properties) {
+  const raw = properties.getProperty(IDEMPOTENCY_PROPERTY_PREFIX_ + "convert-enquiry:" + enquiry.enquiryId);
+  if (!raw) return null;
+  let record;
+  try { record = JSON.parse(raw); } catch {
+    throw new Error("The saved enquiry conversion record is unreadable. Check the existing admission before converting again.");
+  }
+  const response = record && record.response;
+  const student = response && response.student;
+  if (!record || record.action !== "add-student" || typeof record.fingerprint !== "string" || !record.fingerprint ||
+      !response || response.success !== true || !student || !/^\d{8}$/.test(String(student.studentId || "")) ||
+      !student.fullName || !student.course || !student.batch || !response.sheet || !response.sheet.id) {
+    throw new Error("The saved enquiry conversion record is incomplete. Check the existing admission before converting again.");
+  }
+  if (enquiry.admissionId && enquiry.admissionId !== student.studentId) {
+    throw new Error("The saved conversion conflicts with the enquiry's linked admission.");
+  }
+  const sheet = SpreadsheetApp.openById(response.sheet.id).getSheets()[0];
+  const info = getAdmissionHeaderInfo_(sheet);
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, info.headers.length).getDisplayValues() : [];
+  const matches = rows.map(function(row, index) { return { values: row, row: index + 2 }; })
+    .filter(function(item) { return String(item.values[info.columns["Student ID"] - 1] || "").trim() === student.studentId; });
+  if (matches.length !== 1) throw new Error("The saved conversion's admission is missing or duplicated. Check the admission records before converting again.");
+  const found = matches[0];
+  const values = found.values;
+  const sourceEnquiryId = String(values[info.columns["Enquiry ID"] - 1] || "").trim();
+  if ((sourceEnquiryId && sourceEnquiryId !== enquiry.enquiryId) ||
+      normalizeText_(values[info.columns["Full Name"] - 1]) !== normalizeText_(student.fullName) ||
+      normalizeCourseName_(values[info.columns.Course - 1]) !== normalizeCourseName_(student.course) ||
+      String(values[info.columns.Batch - 1] || "").trim() !== String(student.batch).trim() ||
+      (!enquiry.admissionId && (normalizeText_(values[info.columns["Full Name"] - 1]) !== normalizeText_(enquiry.fullName) ||
+        String(values[info.columns["Mobile Number"] - 1] || "").trim() !== enquiry.mobileNumber ||
+        normalizeCourseName_(values[info.columns.Course - 1]) !== normalizeCourseName_(enquiry.courseInterestedIn)))) {
+    throw new Error("The saved conversion's admission does not match this enquiry. Check the existing records before converting again.");
+  }
+  const fingerprint = String(values[info.columns["Conversion Fingerprint"] - 1] || "").trim() || record.fingerprint;
+  const conversionInfo = getAdmissionHeaderInfo_(sheet, true);
+  sheet.getRange(found.row, conversionInfo.columns["Conversion Fingerprint"]).setValue(fingerprint);
+  sheet.getRange(found.row, conversionInfo.columns["Enquiry ID"]).setValue(enquiry.enquiryId);
+  return { sheet: sheet, studentId: student.studentId, row: found.row, fingerprint: fingerprint, recovered: true };
+}
+
 function synchronizeConversionStudentIndex_(sheet, admissionRow) {
   const info = getAdmissionHeaderInfo_(sheet);
   const row = sheet.getRange(admissionRow, 1, 1, info.headers.length).getDisplayValues()[0];
@@ -3867,7 +3907,8 @@ function convertEnquiry_(payload) {
       const courseInfo = getCourseCodes_().find(function(course) { return normalizeCourseCode_(course.code) === admissionCode; });
       if (!courseInfo) throw new Error("Linked admission course code was not found.");
       const source = findAdmissionSheetForCourse_(courseInfo.courseName).sheet;
-      const associated = findEnquiryAdmission_(source, found.record, null);
+      const associated = findEnquiryAdmission_(source, found.record, null) ||
+        (!reservation && recoverRecordedEnquiryAdmission_(found.record, properties));
       if (!associated || associated.studentId !== found.record.admissionId) throw new Error("Linked admission association is missing or inconsistent.");
       if (reservation && (reservation.studentId !== associated.studentId ||
           reservation.sheetId !== source.getParent().getId() || reservation.fingerprint !== associated.fingerprint)) {
@@ -3876,7 +3917,7 @@ function convertEnquiry_(payload) {
       try {
         synchronizeConversionStudentIndex_(source, associated.row);
       } catch (error) {
-        return { success: true, partial: true, studentIndexSynchronized: false,
+        return { success: true, partial: true, studentIndexSynchronized: false, recoveredAdmission: Boolean(associated.recovered),
           indexWarning: "Students Index synchronization failed: " + error.message,
           data: { enquiryId: enquiryId, admissionId: associated.studentId, studentId: associated.studentId },
           error: "Admission is linked, but Students Index could not be repaired. Retry to recover." };
@@ -3884,6 +3925,7 @@ function convertEnquiry_(payload) {
       const response = linkEnquiryAdmission_(sheet, found, associated.studentId);
       if (reservation && !response.indexWarning) properties.deleteProperty(propertyKey);
       response.studentIndexSynchronized = true;
+      if (associated.recovered) response.recoveredAdmission = true;
       return response;
     }
     if (!payload.admission || typeof payload.admission !== "object" || Array.isArray(payload.admission)) throw new Error("Admission details are required.");
@@ -3894,13 +3936,14 @@ function convertEnquiry_(payload) {
     admission.enquiryId = enquiryId;
     const fingerprint = getIdempotencyContext_("add-student", admission).fingerprint;
     admission.conversionFingerprint = fingerprint;
-    if (found.record.status === "Converted" && !reservation) throw new Error("Converted enquiry has no recoverable admission association.");
+    const recovered = !reservation ? recoverRecordedEnquiryAdmission_(found.record, properties) : null;
+    if (found.record.status === "Converted" && !reservation && !recovered) throw new Error("Converted enquiry has no recoverable admission association.");
     if (reservation && reservation.fingerprint !== fingerprint) throw new Error("Enquiry conversion details differ from the reserved attempt.");
-    const admissionSheet = reservation
+    const admissionSheet = recovered ? recovered.sheet : reservation
       ? SpreadsheetApp.openById(reservation.sheetId).getSheets()[0]
       : findAdmissionSheetForCourse_(admission.course).sheet;
-    let existing = findEnquiryAdmission_(admissionSheet, found.record, reservation);
-    if (existing && existing.fingerprint !== fingerprint) throw new Error("Admission association differs from the conversion details.");
+    let existing = recovered || findEnquiryAdmission_(admissionSheet, found.record, reservation);
+    if (existing && !recovered && existing.fingerprint !== fingerprint) throw new Error("Admission association differs from the conversion details.");
     if (found.record.status === "Converted" && !existing) throw new Error("Converted enquiry has no recoverable admission source row.");
     if (!existing && !reservation && (normalizeText_(admission.fullName) !== normalizeText_(found.record.fullName) ||
         String(admission.mobileNumber || "").trim() !== found.record.mobileNumber ||
@@ -3938,7 +3981,7 @@ function convertEnquiry_(payload) {
     try {
       synchronizeConversionStudentIndex_(admissionSheet, existing.row);
     } catch (error) {
-      return { success: true, partial: true, studentIndexSynchronized: false,
+      return { success: true, partial: true, studentIndexSynchronized: false, recoveredAdmission: Boolean(recovered),
         indexWarning: "Students Index synchronization failed: " + error.message,
         data: { enquiryId: enquiryId, admissionId: studentId, studentId: studentId },
         error: "Admission created, but Students Index could not be synchronized. Retry this conversion to repair it." };
@@ -3947,11 +3990,12 @@ function convertEnquiry_(payload) {
       const response = linkEnquiryAdmission_(sheet, found, studentId);
       if (!response.indexWarning) properties.deleteProperty(propertyKey);
       response.studentIndexSynchronized = true;
+      if (recovered) response.recoveredAdmission = true;
       if (initialStudentIndexWarning) response.studentIndexWarning = initialStudentIndexWarning;
       return response;
     } catch (error) {
       Logger.log("Admission created but Enquiry linkage failed: " + error.message);
-      return { success: true, partial: true, data: { enquiryId: enquiryId, admissionId: studentId, studentId: studentId },
+      return { success: true, partial: true, recoveredAdmission: Boolean(recovered), data: { enquiryId: enquiryId, admissionId: studentId, studentId: studentId },
         error: "Admission created, but enquiry could not be linked. Retry this conversion to recover without creating another admission." };
     }
   } finally {

@@ -1,4 +1,5 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import { AccessDeniedScreen, AuthLoadingScreen, LoginScreen } from './auth/AuthScreen'
 import { useAuth } from './auth/useAuth'
 import { AppLayout } from './components/layout/AppLayout'
@@ -11,6 +12,8 @@ import { NewAdmissionPage } from './pages/NewAdmissionPage'
 import { PaymentHistoryPage } from './pages/PaymentHistoryPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { WalkInsPage } from './pages/WalkInsPage'
+
+const AnnouncementsPage = lazy(() => import('./features/announcements/AnnouncementsPage').then((module) => ({ default: module.AnnouncementsPage })))
 
 function App() {
   const { status } = useAuth()
@@ -30,6 +33,7 @@ function App() {
             <Route path="students" element={<StudentsPage />} />
             <Route path="admissions" element={<StudentsPage />} />
             <Route path="enquiries" element={<EnquiriesPage />} />
+            <Route path="announcements" element={<Suspense fallback={<p role="status">Loading announcements...</p>}><AnnouncementsPage /></Suspense>} />
             <Route path="walk-ins" element={<WalkInsPage />} />
             <Route path="payment-history" element={<PaymentHistoryPage />} />
             <Route path="course-codes" element={<CourseCodesPage />} />

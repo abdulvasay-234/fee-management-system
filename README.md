@@ -62,6 +62,53 @@ missing education fields on reload. Existing non-empty dedicated fields take
 precedence. Records whose details were already missing before this protection
 still need recovery from their original source; the application does not invent them.
 
+## Announcements
+
+Announcements reuses the existing student list, course catalog and course-linked
+batches. Search matches names, mobile numbers and student IDs. Changing filters
+clears selection; the header checkbox selects the current page, while Select all
+matching selects the entire filtered scope. Enrollment status is shown as Not
+tracked because the existing records do not contain it.
+
+Compose and review a title and message with optional `{name}`, `{course}`,
+`{batch}` and `{student_id}` placeholders. Preview resolves them for the selected
+student. Valid ten-digit Indian mobiles receive country code 91; international
+numbers retain their country code. Missing or invalid numbers remain visible in
+history but are excluded from the sending queue. Validation cannot establish
+whether a number has a WhatsApp account.
+
+Save creates a paused queue. Start Queue & Open WhatsApp explicitly opens the
+current recipient's official `wa.me` chat with an encoded, personalized draft.
+Only explicit Open/Reopen/Retry clicks open additional chats; the module reuses
+its chat window where the browser permits. Allow popups if opening is blocked.
+Press Send yourself in WhatsApp, then use Mark as Sent & Next. Skipping, choosing
+or advancing recipients does not open chats or imply that messages were sent.
+Pause and Stop preserve progress. Refreshing or returning to the page restores
+active queues as paused, and Resume never opens chats automatically. Completed,
+sent, skipped and invalid recipients cannot be reopened in the same queue.
+Duplicate creates a fresh selection from current student records with new
+statuses, explicitly flagging historical students no longer available.
+
+As configured, history is local browser storage per signed-in administrator,
+not Google Sheets or cross-device storage. Separate announcement and recipient
+arrays preserve reviewed recipient snapshots and independent progress without
+creating student records or changing admissions, enquiries or payments.
+Corrupt history, conflicting revisions from another tab and storage write
+failures are displayed rather than silently overwriting data. Clearing browser
+storage removes history; account separation in the UI is not encryption or a
+security boundary against someone with access to the browser.
+
+There is no WhatsApp API, paid provider, automatic sending or delivery
+verification. Opened and manually marked sent are distinct statuses. Use only
+for expected student communications and respect WhatsApp's anti-spam rules and
+browser safeguards.
+
+Focused queue/storage tests:
+
+```bash
+npm test --prefix gateway -- test/announcements.test.ts
+```
+
 ## Financial records
 
 The admission stores the agreed course fee and discount; the final fee is the
@@ -139,6 +186,22 @@ dependent specializations, custom Other entries, and graduation years (including
 Currently Pursuing). Enquiry conversion prefills these selections. Education
 level and specialization are saved together in Degree / Course, and graduation
 year in Year of Passing; College Name remains optional.
+
+Enquiry conversion waits up to 35 seconds for the gateway's 30-second backend
+request. An unconfirmed result shows the underlying error and Retry Conversion,
+which resubmits the unchanged original request through the existing enquiry
+reservation/link recovery logic. This recovers a saved admission instead of
+creating another one. The form remains locked while the outcome is uncertain,
+including when a recovery attempt fails authentication. Do not create a separate
+admission to work around an unconfirmed conversion.
+When an earlier conversion has a saved admission response but its enquiry link
+is missing, the backend verifies the recorded admission ID, source sheet and
+student identity, restores conversion metadata and resynchronizes both indexes.
+It preserves the existing admission's course, batch, fees and payments instead
+of creating another record or replacing its details with a later form attempt.
+Missing, conflicting or incomplete saved records still require reconciliation;
+idempotency protection is not bypassed. This recovery requires deploying the
+updated Apps Script backend.
 
 After a payment is recorded, staff can open a prefilled WhatsApp acknowledgement
 for the student's mobile number. It suggests a next payment date 20 days later

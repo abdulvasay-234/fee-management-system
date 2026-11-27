@@ -23,6 +23,7 @@ import {
   fetchStudent,
   fetchStudents,
   type AdmissionPayload,
+  type ConvertEnquiryPayload,
   type ConvertEnquiryResponse,
   type EnquiryRecord,
   type StudentRecord,
@@ -216,6 +217,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const [conversionState, setConversionState] = useState<ConversionState>('idle')
   const [conversionResult, setConversionResult] = useState<ConvertEnquiryResponse | null>(null)
   const [conversionError, setConversionError] = useState('')
+  const pendingConversion = useRef<ConvertEnquiryPayload | null>(null)
   const [confirmationData, setConfirmationData] = useState<AdmissionConfirmationData | null>(null)
   const [confirmationLoadError, setConfirmationLoadError] = useState('')
   const [admissionIndexWarning, setAdmissionIndexWarning] = useState('')
@@ -345,6 +347,53 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     }
   }
 
+  async function completeConversion(payload: ConvertEnquiryPayload) {
+    const response = await convertEnquiry(payload)
+    if (!response.data?.studentId && !response.data?.admissionId) {
+      throw new ApiOutcomeUnknownError('The conversion response did not include an Admission ID.')
+    }
+    setConversionResult(response)
+    setConversionState('success')
+    onConversionSuccess?.(response)
+    const studentId = response.data.studentId || response.data.admissionId
+    try {
+      const result = await fetchStudent(studentId)
+      setConfirmationData(createAdmissionConfirmationData(result.student, response.data.enquiryId || payload.enquiryId))
+    } catch {
+      setConfirmationLoadError('Admission created successfully, but the Admission details could not be loaded. You can still view the Student record.')
+    }
+  }
+
+  function conversionFailed(error: unknown, recovering = false) {
+    if (recovering || error instanceof ApiOutcomeUnknownError) {
+      setConversionState('ambiguous')
+      setConversionError(error instanceof Error ? error.message : 'Conversion outcome could not be confirmed.')
+      onConversionOutcomeUnknown?.()
+    } else {
+      setConversionState('definitive-error')
+      setConversionError(error instanceof Error ? error.message : 'The API rejected the conversion request.')
+    }
+  }
+
+  async function retryConversion() {
+    if (submittingRef.current) return
+    const payload = pendingConversion.current
+    if (!payload) {
+      setConversionError('The original request is unavailable. Check the enquiry and admission records before trying again.')
+      return
+    }
+    if (!startSaving()) return
+    setConversionState('submitting')
+    setConversionError('')
+    try {
+      await completeConversion(payload)
+    } catch (error) {
+      conversionFailed(error, true)
+    } finally {
+      finishSaving()
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submittingRef.current || conversionState === 'ambiguous' || conversionState === 'success') return
@@ -411,20 +460,9 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       }
       if (mode === 'convert') {
         if (!enquiry) throw new Error('Conversion requires a source enquiry.')
-        const response = await convertEnquiry({ enquiryId: enquiry.enquiryId, admission: admissionPayload })
-        if (!response.data?.studentId && !response.data?.admissionId) {
-          throw new ApiOutcomeUnknownError('The conversion response did not include an Admission ID.')
-        }
-        setConversionResult(response)
-        setConversionState('success')
-        onConversionSuccess?.(response)
-        const studentId = response.data.studentId || response.data.admissionId
-        try {
-          const result = await fetchStudent(studentId)
-          setConfirmationData(createAdmissionConfirmationData(result.student, response.data.enquiryId || enquiry.enquiryId))
-        } catch {
-          setConfirmationLoadError('Admission created successfully, but the Admission details could not be loaded. You can still view the Student record.')
-        }
+        const payload = { enquiryId: enquiry.enquiryId, admission: admissionPayload }
+        pendingConversion.current = payload
+        await completeConversion(payload)
       } else {
         const result = await createAdmission(admissionPayload)
         const { student } = result
@@ -464,14 +502,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       }
     } catch (error) {
       if (mode === 'convert') {
-        if (error instanceof ApiOutcomeUnknownError) {
-          setConversionState('ambiguous')
-          setConversionError('Conversion status could not be confirmed. Do not submit again until the enquiry and admission records have been checked.')
-          onConversionOutcomeUnknown?.()
-        } else {
-          setConversionState('definitive-error')
-          setConversionError(error instanceof Error ? error.message : 'The API rejected the conversion request.')
-        }
+        conversionFailed(error)
       } else {
         setSubmitError(error instanceof Error ? error.message : 'Unable to register the student.')
       }
@@ -677,7 +708,10 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
             </Button>
           </div>
         ) : conversionState === 'ambiguous' ? (
-          <Button variant="secondary" onClick={() => onClose?.()}>Close</Button>
+          <>
+            <Button variant="secondary" onClick={() => onClose?.()}>Close</Button>
+            <Button onClick={() => void retryConversion()}>Retry Conversion</Button>
+          </>
         ) : (
           <>
             <Button variant="secondary" onClick={() => onClose?.()} disabled={isSubmitting}>Cancel</Button>
@@ -689,6 +723,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       >
         {conversionState === 'success' ? (
           <div className="admission-confirmation-success" role="status">
+            {conversionResult?.recoveredAdmission && <p>The existing admission was recovered and linked to this enquiry. Its saved course, batch and fee details have been preserved.</p>}
             <div className="admission-confirmation-success__id">
               <CheckCircle2 aria-hidden="true" size={24} />
               <div><span>Student / Admission ID</span><strong>{studentId}</strong></div>
@@ -716,10 +751,10 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
             </section>}
             {conversionState === 'ambiguous' && <div className="admission-conversion-message admission-conversion-message--ambiguous" role="alert">
               <AlertTriangle aria-hidden="true" size={18} />
-              <div><strong>Conversion status could not be confirmed.</strong><p>Do not submit again until the enquiry and admission records have been checked.</p></div>
+              <div><strong>Conversion needs confirmation.</strong><p>{conversionError}</p><p>Retry Conversion checks or completes the original request. Submitted details are kept unchanged to prevent duplicate admissions.</p></div>
             </div>}
             {conversionState === 'definitive-error' && <div className="admission-conversion-message" role="alert"><strong>Unable to create admission.</strong> {conversionError}</div>}
-            {admissionFields}
+            <fieldset className="admission-conversion-fields" disabled={conversionState === 'ambiguous'}>{admissionFields}</fieldset>
           </>
         )}
       </Modal>
