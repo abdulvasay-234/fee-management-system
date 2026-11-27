@@ -195,7 +195,7 @@ export function StudentsDirectory() {
                 </ul>
                 {summary.courses.length > 4 && <small>Scroll for more courses</small>}
               </>
-            ) : <small>No admissions yet</small>}
+            ) : null}
           </div>
         </Card>
       </section>
