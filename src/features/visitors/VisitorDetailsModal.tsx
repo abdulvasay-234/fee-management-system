@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Input, Select, Textarea } from '../../components/ui'
 import { createFollowUp, updateFollowUp } from '../../services/api'
 import { CourseLabel } from '../courseCodes/CourseLabel'
+import { hasPendingSave, useSaveProtection } from '../../hooks/useSaveProtection'
 import {
   contactMethodOptions,
   followUpStatusOptions,
@@ -54,9 +55,10 @@ export function VisitorDetailsModal({
   const [followUpForm, setFollowUpForm] = useState<FollowUpFormData>(emptyFollowUp)
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUpRecord | null>(null)
   const [followUpError, setFollowUpError] = useState('')
-  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
+  const { isSaving: isSavingFollowUp, savingRef, startSaving, finishSaving } = useSaveProtection()
 
   function changeFollowUp(field: keyof FollowUpFormData, value: string) {
+    if (savingRef.current) return
     setFollowUpForm((current) => ({ ...current, [field]: value }))
   }
 
@@ -77,12 +79,12 @@ export function VisitorDetailsModal({
 
   async function saveFollowUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSavingFollowUp) return
+    if (savingRef.current) return
     if (!followUpForm.scheduledDate) {
       setFollowUpError('Scheduled date is required.')
       return
     }
-    setIsSavingFollowUp(true)
+    if (!startSaving()) return
     setFollowUpError('')
     try {
       const payload = { ...followUpForm, notes: followUpForm.notes.trim(), contactMethod: followUpForm.contactMethod.trim() }
@@ -94,12 +96,12 @@ export function VisitorDetailsModal({
     } catch (error) {
       setFollowUpError(error instanceof Error ? error.message : 'Unable to save the follow-up.')
     } finally {
-      setIsSavingFollowUp(false)
+      finishSaving()
     }
   }
 
   return (
-    <div className="visitor-detail-modal" role="presentation" onMouseDown={onClose}>
+    <div className="visitor-detail-modal" role="presentation" onMouseDown={() => { if (!hasPendingSave()) onClose() }}>
       <section className="visitor-detail-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="visitor-detail-title" onMouseDown={(event) => event.stopPropagation()}>
         <header className="visitor-detail-modal__header">
           <div>

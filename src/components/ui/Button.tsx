@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useIsSaving } from '../../hooks/useSaveProtection'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
@@ -14,6 +15,7 @@ export function Button({
   variant = 'primary',
   ...props
 }: ButtonProps) {
+  const isSaving = useIsSaving()
   const classes = [
     'button',
     variant === 'secondary' && 'button--secondary',
@@ -24,7 +26,7 @@ export function Button({
     .join(' ')
 
   return (
-    <button className={classes} type={type} {...props}>
+    <button className={classes} type={type} {...props} disabled={props.disabled || isSaving}>
       {children}
     </button>
   )

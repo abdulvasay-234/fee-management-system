@@ -9,6 +9,7 @@ import {
   validateCourseCodeInput,
 } from './courseCodeService'
 import type { CourseCode, CourseCodeInput } from './courseCodeTypes'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 interface CourseCodeFormModalProps {
   course?: CourseCode
@@ -31,9 +32,10 @@ export function CourseCodeFormModal({
   })
   const [errors, setErrors] = useState<Partial<Record<keyof CourseCodeInput, string>>>({})
   const [submitError, setSubmitError] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const { isSaving, savingRef, startSaving, finishSaving } = useSaveProtection()
 
   function updateField(field: keyof CourseCodeInput, value: string) {
+    if (savingRef.current) return
     const nextValue = field === 'code' ? value.replace(/\D/g, '').slice(0, 2) : value
     setFormData((current) => ({ ...current, [field]: nextValue }))
     setErrors((current) => ({ ...current, [field]: undefined }))
@@ -42,12 +44,13 @@ export function CourseCodeFormModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (savingRef.current) return
     const nextErrors = validateCourseCodeInput(formData, course?.id)
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
 
     setSubmitError('')
-    setIsSaving(true)
+    if (!startSaving()) return
     try {
       if (course) await updateCourseCode(course.id, formData)
       else await addCourseCode(formData)
@@ -55,7 +58,7 @@ export function CourseCodeFormModal({
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save the course code.')
     } finally {
-      setIsSaving(false)
+      finishSaving()
     }
   }
 
@@ -82,7 +85,7 @@ export function CourseCodeFormModal({
         <Input id="courseCodeName" label="Course Name" required value={formData.name} error={errors.name} onChange={(event) => updateField('name', event.target.value)} />
         <Input id="courseCodeValue" label="Course Code" required inputMode="numeric" maxLength={2} value={formData.code} disabled={Boolean(course)} error={errors.code} hint={course ? 'Course codes cannot be changed after creation.' : 'Exactly two numeric digits from 01 to 99.'} onChange={(event) => updateField('code', event.target.value)} />
         {!course && suggestedCode && (
-          <button className="course-code-suggestion" type="button" onClick={() => updateField('code', getNextAvailableCourseCode())}>
+          <button className="course-code-suggestion" type="button" disabled={isSaving} onClick={() => updateField('code', getNextAvailableCourseCode())}>
             <Sparkles aria-hidden="true" size={15} />
             Suggested next code: {suggestedCode}
           </button>

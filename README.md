@@ -139,6 +139,18 @@ manual; no payment or
 student record is changed. Cleared fees disable the button. Invalid contact,
 admission details or balance disable it with an error.
 
+While an admission, enquiry, walk-in, follow-up, payment, or course-code change
+is being saved, shared form controls are disabled and in-app clicks cannot
+discard the pending save. Repeated submissions are blocked. Failed saves
+display an error and unlock controls for correction or retry; fields that were
+already read-only remain locked.
+
+Refreshing, closing the tab, or leaving the site during a pending save triggers
+the browser's standard warning about changes that may not be saved. Browsers
+do not allow custom warning text and may suppress prompts without prior user
+interaction. The warning is removed when saving finishes. Confirmed records
+remain stored in the backend; refreshing does not erase already saved records.
+
 Payment requests require an idempotency key. On the first payment after the
 backend is deployed, each payment source sheet is extended with `Idempotency
 Key` and `Idempotency Fingerprint` columns without changing existing rows. These
@@ -167,6 +179,38 @@ unlinked payments, except legacy standalone Other Programs receipts, which
 remain unlinked collections and are counted in the rebuild result. Back up
 and review source data before rebuilding; no historical data is automatically
 corrected.
+
+`#NUM!` in cached student Total Paid / Balance no longer blocks financial reads:
+these totals are calculated from the actual receipts and admission Final Fee.
+Damaged payment Total Paid snapshots are recovered from valid saved Previous
+Paid plus Amount Paid. If Previous Paid is blank, the source receipt must match
+the indexed student and amount; actual earlier receipts for that student in
+source append order supply Previous Paid. Damaged Balance snapshots use the
+matching admission's Final Fee minus that receipt's Total Paid. Payment dates
+are not used to reorder installments when recovering these snapshots. Do not
+reorder source receipt rows before recovery. Valid historical snapshots are
+unchanged. Recovery is logged and does not write spreadsheet cells during reads.
+Invalid original amounts/fees, missing recovery inputs, and damaged balances
+without a matching admission still fail explicitly rather than guessing values.
+
+After backing up and reviewing the source sheets, deploy the updated Apps Script
+and run `previewFinancialSummaryRepair` in its editor to validate source records
+and report how many payment cells need repair without writing them. With approval,
+run `repairFinancialSummaries`: it replaces `#NUM!` cells in source Total Paid /
+Balance and fills blank Previous Paid for those damaged totals from verified
+source receipts, then runs the existing index rebuild.
+Amounts, fees, identifiers, dates, remarks and valid source snapshots are not
+changed. Financial access stays blocked if a repair/rebuild is interrupted;
+correct the reported problem and rerun it. A GitHub push alone does not update
+the Apps Script deployment or repair existing spreadsheet cells.
+
+The payment summary helper returns `{ totalPaid: 0, paymentCount: 0 }` for an
+empty source sheet, not a bare number. The writer uses validated paise arithmetic
+and rejects missing/nonfinite or inconsistent totals before appending a receipt.
+Older deployed code returned a bare `0` on this branch while its caller expected
+an object, causing the first receipt's totals to become `NaN` / `#NUM!`.
+Running the frontend locally still uses the configured remote gateway and its
+deployed Apps Script; editing backend files locally does not activate this fix.
 
 ## Deployment
 

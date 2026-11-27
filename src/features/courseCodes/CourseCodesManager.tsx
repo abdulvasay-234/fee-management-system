@@ -11,6 +11,7 @@ import {
 import { CourseCodeFormModal } from './CourseCodeFormModal'
 import type { CourseCode } from './courseCodeTypes'
 import { CourseLabel } from './CourseLabel'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 type CourseFilter = 'all' | 'Regular' | 'Other'
 
@@ -28,7 +29,7 @@ export function CourseCodesManager() {
   const [editingCourse, setEditingCourse] = useState<CourseCode | null>(null)
   const [deletingCourse, setDeletingCourse] = useState<CourseCode | null>(null)
   const [deleteError, setDeleteError] = useState('')
-  const [isDeleting, setIsDeleting] = useState(false)
+  const { isSaving: isDeleting, savingRef, startSaving, finishSaving } = useSaveProtection()
 
   const regularCourses = courses.filter((course) => course.type === 'Regular')
   const reservedCourses = courses.filter((course) => course.type === 'Other')
@@ -54,9 +55,9 @@ export function CourseCodesManager() {
   }
 
   async function confirmDelete() {
-    if (!deletingCourse || isDeleting) return
+    if (!deletingCourse || savingRef.current) return
     setDeleteError('')
-    setIsDeleting(true)
+    if (!startSaving()) return
     try {
       const deleted = await deleteCourseCode(deletingCourse.id)
       if (!deleted) throw new Error('This course code cannot be deleted.')
@@ -64,7 +65,7 @@ export function CourseCodesManager() {
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete the course code.')
     } finally {
-      setIsDeleting(false)
+      finishSaving()
     }
   }
 

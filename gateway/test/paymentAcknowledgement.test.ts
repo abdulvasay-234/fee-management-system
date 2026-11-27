@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
   CourseLabel: ({ name }: { name: string }) => name,
@@ -7,6 +7,57 @@ vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
 
 const modulePath = fileURLToPath(new URL('../../src/features/payments/receiptActions.ts', import.meta.url))
 const { createAdmissionConfirmationUrl, createFeeReminderUrl, createPaymentAcknowledgementUrl } = await import(modulePath)
+const { registerPendingSave, finishPendingSave, hasPendingSave } = await import(
+  fileURLToPath(new URL('../../src/hooks/useSaveProtection.ts', import.meta.url)),
+)
+
+describe('pending save refresh protection', () => {
+  const tokens: symbol[] = []
+  afterEach(() => {
+    tokens.splice(0).forEach(finishPendingSave)
+    vi.unstubAllGlobals()
+  })
+
+  it('warns only while a save is pending and removes the warning after completion', () => {
+    const target = new EventTarget()
+    vi.stubGlobal('window', target)
+    const token = Symbol('pending payment')
+    tokens.push(token)
+    const before = new Event('beforeunload', { cancelable: true })
+    target.dispatchEvent(before)
+    expect(before.defaultPrevented).toBe(false)
+    registerPendingSave(token)
+    expect(hasPendingSave()).toBe(true)
+    const during = new Event('beforeunload', { cancelable: true })
+    target.dispatchEvent(during)
+    expect(during.defaultPrevented).toBe(true)
+    finishPendingSave(token)
+    expect(hasPendingSave()).toBe(false)
+    const after = new Event('beforeunload', { cancelable: true })
+    target.dispatchEvent(after)
+    expect(after.defaultPrevented).toBe(false)
+  })
+
+  it('keeps the warning until all pending operations finish without double-counting the same save', () => {
+    const target = new EventTarget()
+    vi.stubGlobal('window', target)
+    const first = Symbol('first save')
+    const second = Symbol('second save')
+    tokens.push(first, second)
+    registerPendingSave(first)
+    registerPendingSave(first)
+    registerPendingSave(second)
+    finishPendingSave(first)
+    const during = new Event('beforeunload', { cancelable: true })
+    target.dispatchEvent(during)
+    expect(during.defaultPrevented).toBe(true)
+    finishPendingSave(second)
+    expect(hasPendingSave()).toBe(false)
+    const after = new Event('beforeunload', { cancelable: true })
+    target.dispatchEvent(after)
+    expect(after.defaultPrevented).toBe(false)
+  })
+})
 
 const admission = { mobileNumber: '9876543210' }
 const payment = {

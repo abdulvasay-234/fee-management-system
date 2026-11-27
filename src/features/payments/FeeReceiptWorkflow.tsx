@@ -18,6 +18,7 @@ import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes
 import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
 import { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } from './receiptActions'
 import { CourseLabel } from '../courseCodes/CourseLabel'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 interface PaymentFormData {
   amountPaid: string
@@ -126,7 +127,7 @@ function PaymentForm({ admission, onRecorded }: {
   const [formData, setFormData] = useState(initialForm)
   const [errors, setErrors] = useState<PaymentErrors>({})
   const [submitError, setSubmitError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { isSaving: isSubmitting, savingRef: submittingRef, startSaving, finishSaving } = useSaveProtection()
   const [upiQrError, setUpiQrError] = useState(false)
   const showUpiQr = formData.paymentMode === 'UPI'
   const isCashPayment = formData.paymentMode === 'Cash'
@@ -137,6 +138,7 @@ function PaymentForm({ admission, onRecorded }: {
   const balance = sumMoney([admission.finalFee, -totalPaid])
 
   function updateField(field: keyof PaymentFormData, value: string) {
+    if (submittingRef.current) return
     if (field === 'paymentMode') setUpiQrError(false)
     setFormData((current) => ({ ...current, [field]: value }))
     setErrors((current) => ({ ...current, [field]: undefined, ...(field === 'paymentMode' ? { remarks: undefined } : {}) }))
@@ -168,7 +170,7 @@ function PaymentForm({ admission, onRecorded }: {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSubmitting) return
+    if (submittingRef.current) return
     const nextErrors = validate()
     setErrors(nextErrors)
 
@@ -180,7 +182,7 @@ function PaymentForm({ admission, onRecorded }: {
     }
 
     setSubmitError('')
-    setIsSubmitting(true)
+    if (!startSaving()) return
     try {
       const result = await createPayment({
         studentId: admission.admissionNumber,
@@ -215,12 +217,12 @@ function PaymentForm({ admission, onRecorded }: {
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save the payment.')
     } finally {
-      setIsSubmitting(false)
+      finishSaving()
     }
   }
 
   return (
-    <form className="payment-form" noValidate onSubmit={handleSubmit}>
+    <form className="payment-form" noValidate aria-busy={isSubmitting} onSubmit={handleSubmit}>
       <div className={`payment-form__content${showUpiQr ? ' payment-form__content--upi' : ''}`}>
         <Card className="payment-card">
           <header className="payment-card__header">
@@ -228,16 +230,17 @@ function PaymentForm({ admission, onRecorded }: {
             <div><span>Fee collection</span><h2>Payment details</h2></div>
           </header>
           <div className="payment-form__fields">
-            <Input id="amountPaid" name="amountPaid" label="Amount Paid" required inputMode="decimal" placeholder="0.00" value={formData.amountPaid} error={errors.amountPaid} onChange={handleAmountChange} />
-            <Input id="paymentDate" name="paymentDate" label="Payment Date" required type="date" value={formData.paymentDate} error={errors.paymentDate} onChange={handleChange} />
-            <Select id="feeType" name="feeType" label="Fee Type" options={feeTypeOptions} value={formData.feeType} onChange={handleChange} />
-            <Select id="paymentMode" name="paymentMode" label="Payment Mode" options={paymentModeOptions} value={formData.paymentMode} onChange={handleChange} />
+            <Input id="amountPaid" name="amountPaid" label="Amount Paid" required inputMode="decimal" placeholder="0.00" value={formData.amountPaid} error={errors.amountPaid} disabled={isSubmitting} onChange={handleAmountChange} />
+            <Input id="paymentDate" name="paymentDate" label="Payment Date" required type="date" value={formData.paymentDate} error={errors.paymentDate} disabled={isSubmitting} onChange={handleChange} />
+            <Select id="feeType" name="feeType" label="Fee Type" options={feeTypeOptions} value={formData.feeType} disabled={isSubmitting} onChange={handleChange} />
+            <Select id="paymentMode" name="paymentMode" label="Payment Mode" options={paymentModeOptions} value={formData.paymentMode} disabled={isSubmitting} onChange={handleChange} />
             <Textarea
               containerClassName="payment-form__full"
               id="paymentRemarks"
               name="remarks"
               label={isCashPayment ? 'Remarks (LSA staff who received cash)' : 'Remarks'}
               required={isCashPayment}
+              disabled={isSubmitting}
               placeholder={isCashPayment ? "Enter the receiving LSA staff member's name" : undefined}
               error={errors.remarks}
               rows={3}

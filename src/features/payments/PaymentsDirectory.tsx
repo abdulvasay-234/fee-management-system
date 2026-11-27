@@ -277,8 +277,6 @@ export function PaymentsDirectory() {
 
       <div className="payments-results-heading">
         <h2>{view === 'students' ? 'Student fee status' : 'Payment history'}</h2>
-        <p>{isLoading ? 'Loading records…' : loadError ? 'Records unavailable' : `${resultsCount} ${view === 'students' ? 'admissions' : 'receipts'} shown`} · {filters.course || 'All Courses'} · {filters.batch ? `Batch ${filters.batch}` : 'All Batches'} · {filters.year || 'All Years'}{filters.enrollmentMonth ? ` · ${filters.enrollmentMonth}` : ''}</p>
-        <p>{view === 'students' ? 'Summary follows filtered admissions, including students with no payments.' : 'Amount received follows matching receipts. Fee totals and balances are current amounts for their linked admissions.'} Pending / Paid filters use current admission balances.</p>
         {view === 'students' && unlinkedPayments > 0 && <p role="status">{unlinkedPayments} receipts without a linked admission are available in Payment History, not included in student fee totals.</p>}
       </div>
 

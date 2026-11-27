@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes } from 'react'
+import { useIsSaving } from '../../hooks/useSaveProtection'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   containerClassName?: string
@@ -17,6 +18,7 @@ export function Input({
   required,
   ...props
 }: InputProps) {
+  const isSaving = useIsSaving()
   const inputId = id ?? `input-${label.toLowerCase().replace(/\s+/g, '-')}`
   const messageId = `${inputId}-message`
 
@@ -33,6 +35,7 @@ export function Input({
         id={inputId}
         required={required}
         {...props}
+        disabled={props.disabled || isSaving}
       />
       {(error || hint) && (
         <span

@@ -45,6 +45,7 @@ import { AdmissionConfirmationDocument } from './AdmissionConfirmationDocument'
 import { AdmissionConfirmationDocumentModal } from './AdmissionConfirmationDocumentModal'
 import { downloadAdmissionConfirmationPdf } from './admissionConfirmationActions'
 import type { AdmissionFormData, AdmissionFormErrors } from './admissionTypes'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -188,7 +189,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const [openSections, setOpenSections] = useState(initialOpenSections)
   const [preview, setPreview] = useState<AdmissionSnapshot | null>(null)
   const [submitError, setSubmitError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { isSaving: isSubmitting, savingRef: submittingRef, startSaving, finishSaving } = useSaveProtection()
   const [conversionState, setConversionState] = useState<ConversionState>('idle')
   const [conversionResult, setConversionResult] = useState<ConvertEnquiryResponse | null>(null)
   const [conversionError, setConversionError] = useState('')
@@ -205,7 +206,6 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const [admissionRecords, setAdmissionRecords] = useState<Array<Pick<StudentRecord, 'studentId'>> | null>(null)
   const [admissionNumberLoadError, setAdmissionNumberLoadError] = useState('')
   const savedAdmissionIds = useRef<Array<Pick<StudentRecord, 'studentId'>>>([])
-  const submittingRef = useRef(false)
   const confirmationDocumentRef = useRef<HTMLElement | null>(null)
   const courseCodes = getCachedCourseCodes()
   const activeCourses = courseCodes.filter((course) => course.active && (course.type === 'Regular' || (mode === 'convert' && course.code === '00')))
@@ -259,6 +259,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   )
 
   function updateField(field: keyof AdmissionFormData, value: string) {
+    if (submittingRef.current) return
     setFormData((current) => ({ ...current, [field]: value }))
     setErrors((current) => ({ ...current, [field]: undefined }))
   }
@@ -335,8 +336,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     }
 
     setSubmitError('')
-    submittingRef.current = true
-    setIsSubmitting(true)
+    if (!startSaving()) return
     if (mode === 'convert') {
       setConversionState('submitting')
       setConversionError('')
@@ -437,8 +437,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
         setSubmitError(error instanceof Error ? error.message : 'Unable to register the student.')
       }
     } finally {
-      submittingRef.current = false
-      setIsSubmitting(false)
+      finishSaving()
       if (mode === 'convert') setConversionState((current) => current === 'submitting' ? 'idle' : current)
     }
   }

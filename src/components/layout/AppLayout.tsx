@@ -2,12 +2,23 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { hasPendingSave, useIsSaving } from '../../hooks/useSaveProtection'
 
 export function AppLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const isSaving = useIsSaving()
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      aria-busy={isSaving}
+      onClickCapture={(event) => {
+        if (hasPendingSave()) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+      }}
+    >
       <Sidebar
         isOpen={isSidebarOpen}
         onNavigate={() => setIsSidebarOpen(false)}

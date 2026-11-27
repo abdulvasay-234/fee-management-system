@@ -7,6 +7,7 @@ import { CourseLabel, CourseSelect } from '../courseCodes/CourseLabel'
 import { WalkInFormModal } from './WalkInFormModal'
 import { VisitorDetailsModal } from './VisitorDetailsModal'
 import { formatVisitorDate, formatVisitorTime } from './visitorTypes'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 const statusOptions = [
   { label: 'All statuses', value: '' },
@@ -61,6 +62,7 @@ export function WalkInsManager() {
   const [followUps, setFollowUps] = useState<FollowUpRecord[]>([])
   const [isLoadingFollowUps, setIsLoadingFollowUps] = useState(false)
   const [actionError, setActionError] = useState('')
+  const { savingRef, startSaving, finishSaving } = useSaveProtection()
 
   async function loadVisitors(showLoader = true) {
     if (showLoader) setIsLoading(true)
@@ -137,7 +139,9 @@ export function WalkInsManager() {
   }
 
   async function handleMarkExit(visitor: VisitorRecord) {
+    if (savingRef.current) return
     if (visitor.visitStatus === 'Completed' || !window.confirm(`Mark ${visitor.fullName}'s visit as exited?`)) return
+    if (!startSaving()) return
     setActionError('')
     try {
       await markWalkInExit(visitor.visitorId)
@@ -145,6 +149,8 @@ export function WalkInsManager() {
       await loadVisitors(false)
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : 'Unable to mark the visitor exit.')
+    } finally {
+      finishSaving()
     }
   }
 

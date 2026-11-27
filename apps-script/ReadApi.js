@@ -274,12 +274,41 @@ function mapPaymentRow_(row, columns) {
   if (amountPaid === null) throw new Error('Payment "' + value("Receipt ID") + '" has no amount.');
   const paymentDate = normalizeComparableDateOnly_(value("Payment Date"));
   if (!paymentDate) throw new Error('Payment "' + value("Receipt ID") + '" has an invalid payment date.');
+  let previousPaid = normalizeOptionalMoney_(value("Previous Paid"));
+  const damagedTotal = value("Total Paid") === "#NUM!";
+  const damagedBalance = value("Balance") === "#NUM!";
+  const savedTotalPaid = damagedTotal ? null : normalizeOptionalMoney_(value("Total Paid"));
+  if (damagedTotal || damagedBalance) moneyToPaise_(amountPaid);
+  let totalPaid;
+  if (damagedTotal) {
+    if (previousPaid === null) {
+      previousPaid = getPreviousPaidForReceipt_(
+        findPaymentSheetForCourse_(value("Course")).sheet,
+        value("Student ID"), value("Receipt ID"), amountPaid
+      );
+    }
+    totalPaid = sumPaymentAmounts_([{ amountPaid: previousPaid }, { amountPaid: amountPaid }]);
+  } else {
+    totalPaid = savedTotalPaid || 0;
+  }
+  let balance;
+  if (damagedBalance) {
+    if (!damagedTotal && savedTotalPaid === null) {
+      throw new Error('Cannot recalculate Balance for receipt "' + value("Receipt ID") + '": Total Paid is missing.');
+    }
+    const admission = findAdmissionByStudentId_(findAdmissionSheetForCourse_(value("Course")).sheet, value("Student ID"));
+    if (!admission) throw new Error('Cannot recalculate Balance for receipt "' + value("Receipt ID") + '": no matching admission. Verify the original agreed fee and correct the balance.');
+    balance = calculateStudentFinancials_(admission, [{ amountPaid: totalPaid }]).balance;
+  } else {
+    balance = normalizeOptionalMoney_(value("Balance")) || 0;
+  }
+  if (damagedTotal || damagedBalance) Logger.log('Recalculated #NUM! payment summary for receipt "' + value("Receipt ID") + '" from saved monetary records; source cells require financial summary repair.');
   return {
     receiptId: value("Receipt ID"), studentId: value("Student ID"), studentName: value("Student Name"), course: value("Course"),
     batch: value("Batch"), enrollmentMonth: value("Enrollment Month"), enrollmentYear: value("Enrollment Year"), paymentDate: paymentDate,
     feeType: value("Fee Type"), amountPaid: amountPaid, paymentMode: value("Payment Mode"),
-    previousPaid: normalizeOptionalMoney_(value("Previous Paid")) || 0, totalPaid: normalizeOptionalMoney_(value("Total Paid")) || 0,
-    balance: normalizeOptionalMoney_(value("Balance")) || 0, createdBy: value("Created By"), createdAt: value("Created At"), remarks: value("Remarks")
+    previousPaid: previousPaid || 0, totalPaid: totalPaid,
+    balance: balance, createdBy: value("Created By"), createdAt: value("Created At"), remarks: value("Remarks")
   };
 }
 

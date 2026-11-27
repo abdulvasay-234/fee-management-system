@@ -4287,11 +4287,11 @@ function addPayment_(payload) {
 
     const previousPaid = previousPaymentSummary.totalPaid;
 
-    const totalPaid =
-      (moneyToPaise_(previousPaid) + moneyToPaise_(amountPaid)) / 100;
-
-    const balance =
-      (moneyToPaise_(admission.finalFee) - moneyToPaise_(totalPaid)) / 100;
+    const financials = calculateStudentFinancials_(admission, [
+      { amountPaid: previousPaid }, { amountPaid: amountPaid }
+    ]);
+    const totalPaid = financials.totalPaid;
+    const balance = financials.balance;
 
     if (balance < 0) {
 
@@ -4623,10 +4623,48 @@ function getPreviousPaid_(
 }
 
 
+function getPreviousPaidForReceipt_(sheet, studentId, receiptId, amountPaid) {
+  const info = getPaymentHeaderInfo_(sheet);
+  const rows = sheet.getLastRow() < 2 ? [] :
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, info.headers.length).getDisplayValues();
+  const previousPayments = [];
+  let found = false;
+  rows.forEach(function(row) {
+    const sourceReceiptId = String(row[info.columns["Receipt ID"] - 1] || "").trim();
+    const sourceStudentId = String(row[info.columns["Student ID"] - 1] || "").trim();
+    if (sourceReceiptId === receiptId) {
+      if (found) throw new Error('Duplicate source receipt "' + receiptId + '".');
+      const sourceAmount = normalizeOptionalMoney_(row[info.columns["Amount Paid"] - 1]);
+      if (sourceStudentId !== studentId || moneyToPaise_(sourceAmount) !== moneyToPaise_(amountPaid)) {
+        throw new Error('Receipt "' + receiptId + '" does not match its source payment.');
+      }
+      found = true;
+    } else if (!found && sourceStudentId === studentId) {
+      const paid = normalizeOptionalMoney_(row[info.columns["Amount Paid"] - 1]);
+      if (!sourceReceiptId || paid === null) throw new Error("Cannot recover Previous Paid from an incomplete source payment.");
+      previousPayments.push({ amountPaid: paid });
+    }
+  });
+  if (!found) throw new Error('Cannot recover Previous Paid: source receipt "' + receiptId + '" was not found.');
+  // Source rows follow append order; payment dates may be backdated.
+  return sumPaymentAmounts_(previousPayments);
+}
+
 function appendPayment_(
   sheet,
   payment
 ) {
+
+  const expectedTotal = sumPaymentAmounts_([
+    { amountPaid: payment.previousPaid }, { amountPaid: payment.amountPaid }
+  ]);
+  if (moneyToPaise_(payment.totalPaid) !== moneyToPaise_(expectedTotal)) {
+    throw new Error("Payment totals do not match Previous Paid plus Amount Paid.");
+  }
+  moneyToPaise_(payment.balance);
+  if (payment.paymentCount !== undefined && (!Number.isSafeInteger(payment.paymentCount) || payment.paymentCount < 1)) {
+    throw new Error("Invalid payment count.");
+  }
 
   const headerInfo = getPaymentHeaderInfo_(sheet);
   const rowValues = headerInfo.headers.map(

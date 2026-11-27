@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { hasPendingSave, subscribeToPendingSaves, useIsSaving } from '../../hooks/useSaveProtection'
 
 export interface SearchableSelectOption {
   description?: string
@@ -38,6 +39,7 @@ export function SearchableSelect({
   required = false,
   value,
 }: SearchableSelectProps) {
+  const isSaving = useIsSaving()
   const generatedId = useId().replace(/:/g, '')
   const inputId = id ?? `searchable-select-${generatedId}`
   const messageId = `${inputId}-message`
@@ -49,6 +51,10 @@ export function SearchableSelect({
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+
+  useEffect(() => subscribeToPendingSaves(() => {
+    if (hasPendingSave()) setIsOpen(false)
+  }), [])
   
   const selected = options.find((option) => option.value === value)
   const isLegacyValue = Boolean(value) && !selected
@@ -133,7 +139,7 @@ export function SearchableSelect({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpen, visibleValue])
 
-  const dropdownElement = isOpen && !loading && (
+  const dropdownElement = isOpen && !loading && !isSaving && (
     <ul
       ref={listRef}
       className="searchable-select__list"
@@ -180,15 +186,16 @@ export function SearchableSelect({
           {selected?.leadingAdornment && <span className="field__select-adornment">{selected.leadingAdornment}</span>}
           <input
             ref={inputRef}
-            aria-activedescendant={isOpen && filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+            aria-activedescendant={isOpen && !isSaving && filtered[activeIndex] ? `${listId}-${activeIndex}` : undefined}
             aria-autocomplete="none"
-            aria-controls={isOpen ? listId : undefined}
+            aria-controls={isOpen && !isSaving ? listId : undefined}
             aria-describedby={error || legacyHint || hint ? messageId : undefined}
-            aria-expanded={isOpen}
+            aria-expanded={isOpen && !isSaving}
             aria-invalid={Boolean(error)}
             autoComplete="off"
             className={`field__control searchable-select__input${error ? ' field__control--error' : ''}`}
             id={inputId}
+            disabled={isSaving}
             onBlur={() => {
               setIsOpen(false)
             }}

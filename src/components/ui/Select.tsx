@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 import type { ReactNode, SelectHTMLAttributes } from 'react'
+import { useIsSaving } from '../../hooks/useSaveProtection'
 
 interface SelectOption {
   label: string
@@ -27,6 +28,7 @@ export function Select({
   required,
   ...props
 }: SelectProps) {
+  const isSaving = useIsSaving()
   const selectId = id ?? `select-${label.toLowerCase().replace(/\s+/g, '-')}`
   const messageId = `${selectId}-message`
 
@@ -45,6 +47,7 @@ export function Select({
           id={selectId}
           required={required}
           {...props}
+          disabled={props.disabled || isSaving}
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>

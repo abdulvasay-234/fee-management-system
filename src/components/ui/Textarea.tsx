@@ -1,4 +1,5 @@
 import type { TextareaHTMLAttributes } from 'react'
+import { useIsSaving } from '../../hooks/useSaveProtection'
 
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   containerClassName?: string
@@ -17,6 +18,7 @@ export function Textarea({
   required,
   ...props
 }: TextareaProps) {
+  const isSaving = useIsSaving()
   const textareaId = id ?? `textarea-${label.toLowerCase().replace(/\s+/g, '-')}`
   const messageId = `${textareaId}-message`
 
@@ -33,6 +35,7 @@ export function Textarea({
         id={textareaId}
         required={required}
         {...props}
+        disabled={props.disabled || isSaving}
       />
       {(error || hint) && (
         <span

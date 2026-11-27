@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Button, Input, Modal, Select, Textarea } from '../../components/ui'
 import { createWalkIn, updateWalkIn } from '../../services/api'
 import { CourseSelect } from '../courseCodes/CourseLabel'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 import {
   emptyVisitorForm,
   followUpRequiredOptions,
@@ -29,9 +30,10 @@ export function WalkInFormModal({ courseOptions, onClose, onSaved, visitor = nul
   const [form, setForm] = useState<VisitorFormData>(() => visitor ? visitorToForm(visitor) : { ...emptyVisitorForm })
   const [errors, setErrors] = useState<VisitorFormErrors>({})
   const [submitError, setSubmitError] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const { isSaving, savingRef, startSaving, finishSaving } = useSaveProtection()
 
   function updateField(field: keyof VisitorFormData, value: string) {
+    if (savingRef.current) return
     setForm((current) => ({ ...current, [field]: value }))
     setErrors((current) => ({ ...current, [field]: undefined }))
   }
@@ -42,13 +44,13 @@ export function WalkInFormModal({ courseOptions, onClose, onSaved, visitor = nul
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSaving) return
+    if (savingRef.current) return
     const normalized = normalizeForm(form)
     const nextErrors = validateVisitorForm(normalized)
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
 
-    setIsSaving(true)
+    if (!startSaving()) return
     setSubmitError('')
     try {
       const { visitDate: _visitDate, entryTime: _entryTime, ...payload } = normalized
@@ -58,7 +60,7 @@ export function WalkInFormModal({ courseOptions, onClose, onSaved, visitor = nul
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save the walk-in.')
     } finally {
-      setIsSaving(false)
+      finishSaving()
     }
   }
 

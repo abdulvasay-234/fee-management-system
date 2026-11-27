@@ -14,7 +14,7 @@ type Payment = {
   course: string
 }
 
-function setup(students: Student[], payments: Payment[]) {
+function setup(students: Student[], payments: Payment[], mockIndexedReaders = true) {
   const context = vm.createContext({
     Utilities: {
       formatDate(date: Date, _zone: string, format: string) {
@@ -32,10 +32,12 @@ function setup(students: Student[], payments: Payment[]) {
   for (const filename of ['Code.js', 'IndexApi.js', 'ReadApi.js']) {
     vm.runInContext(readFileSync(new URL(`../../apps-script/${filename}`, import.meta.url), 'utf8'), context)
   }
-  context.readIndexedStudents_ = (filters: { studentId?: string }) =>
-    students.filter((student) => !filters.studentId || student.studentId === filters.studentId).map((student) => ({ ...student }))
-  context.readIndexedPayments_ = (filters: { studentId?: string }) =>
-    payments.filter((payment) => !filters.studentId || payment.studentId === filters.studentId).map((payment) => ({ ...payment }))
+  if (mockIndexedReaders) {
+    context.readIndexedStudents_ = (filters: { studentId?: string }) =>
+      students.filter((student) => !filters.studentId || student.studentId === filters.studentId).map((student) => ({ ...student }))
+    context.readIndexedPayments_ = (filters: { studentId?: string }) =>
+      payments.filter((payment) => !filters.studentId || payment.studentId === filters.studentId).map((payment) => ({ ...payment }))
+  }
   context.getCourseCodes_ = () => []
   return context
 }
@@ -79,6 +81,7 @@ class PaymentSheet {
         return range
       },
       setValue: (value: unknown) => range.setValues([[value]]),
+      clearContent: () => range.setValues(Array.from({ length: height }, () => Array<unknown>(width).fill(''))),
       setNumberFormat: () => range,
     }
     return range
@@ -108,7 +111,207 @@ function paymentFixture() {
   return { context, properties, sheet }
 }
 
+function indexedFinancialFixture() {
+  const context = setup([], [], false)
+  const properties = new Map<string, string>()
+  const sheetFor = (name: string) => new PaymentSheet(vm.runInContext(`CONFIG.${name}.slice()`, context) as string[])
+  const admissions = sheetFor('ADMISSION_HEADERS')
+  const studentsIndex = sheetFor('STUDENTS_INDEX_HEADERS')
+  const sourcePayments = sheetFor('PAYMENT_HEADERS')
+  const paymentsIndex = sheetFor('PAYMENT_HEADERS')
+  const rowFor = (sheet: PaymentSheet, values: Record<string, unknown>) => sheet.headers.map((header) => values[header] ?? '')
+  const admission = {
+    'Student ID': 'A', 'Full Name': 'Test Student', Course: 'Test', Batch: '01',
+    'Admission Date': '2026-01-01', 'Total Course Fee': 20000.03, Discount: 0, 'Final Fee': 20000.03,
+  }
+  admissions.rows.push(rowFor(admissions, admission))
+  studentsIndex.rows.push(rowFor(studentsIndex, { ...admission, 'Total Paid': '#NUM!', Balance: '#NUM!' }))
+  for (const values of [
+    { 'Receipt ID': 'R1', 'Amount Paid': 1000.01, 'Previous Paid': 0, 'Payment Date': '2026-02-01' },
+    { 'Receipt ID': 'R2', 'Amount Paid': 500.02, 'Previous Paid': 1000.01, 'Payment Date': '2026-01-01' },
+  ]) {
+    const receipt = { ...values, 'Student ID': 'A', Course: 'Test', 'Total Paid': '#NUM!', Balance: '#NUM!' }
+    sourcePayments.rows.push(rowFor(sourcePayments, receipt))
+    paymentsIndex.rows.push(rowFor(paymentsIndex, receipt))
+  }
+  context.LockService = { getScriptLock: () => ({ waitLock: () => undefined, releaseLock: () => undefined }) }
+  context.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (key: string) => properties.get(key) ?? null,
+    getProperties: () => Object.fromEntries(properties),
+    setProperty: (key: string, value: string) => properties.set(key, value),
+    deleteProperty: (key: string) => properties.delete(key),
+  }) }
+  context.getCourseCodes_ = () => [{ code: '02', courseName: 'Test', type: 'regular' }]
+  context.getCreatedBy_ = () => 'test'
+  context.findAdmissionSheetForCourse_ = () => ({ sheet: admissions })
+  context.findPaymentSheetForCourse_ = () => ({ sheet: sourcePayments })
+  context.getStudentsIndexSheet_ = () => studentsIndex
+  context.getPaymentsIndexSheet_ = () => paymentsIndex
+  context.getVisitorsIndexSheet_ = () => sheetFor('VISITOR_HEADERS')
+  context.getFollowUpsIndexSheet_ = () => sheetFor('FOLLOW_UP_HEADERS')
+  context.readVisitorSourceRecords_ = () => []
+  context.readFollowUpSourceRecords_ = () => []
+  return { context, admissions, sourcePayments, studentsIndex, paymentsIndex, properties }
+}
+
 describe('Apps Script financial calculations', () => {
+  it('loads real indexed dashboard, student details and receipt history despite #NUM! summaries without changing source cells', () => {
+    const { context, sourcePayments } = indexedFinancialFixture()
+    const before = structuredClone(sourcePayments.rows)
+    expect(context.getDashboardData_()).toMatchObject({ totalStudents: 1, totalCollected: 1500.03, outstandingFees: 18500 })
+    expect(context.getStudentDetails_({ studentId: 'A' })).toMatchObject({ totalPaid: 1500.03, balance: 18500 })
+    expect(context.getPayments_({})).toMatchObject([
+      { receiptId: 'R1', previousPaid: 0, totalPaid: 1000.01, balance: 19000.02 },
+      { receiptId: 'R2', previousPaid: 1000.01, totalPaid: 1500.03, balance: 18500 },
+    ])
+    expect(sourcePayments.rows).toEqual(before)
+  })
+
+  it('ignores damaged student index totals even when no payment snapshot needs recovery', () => {
+    const { context, paymentsIndex } = indexedFinancialFixture()
+    for (const row of paymentsIndex.rows) {
+      row[paymentsIndex.headers.indexOf('Total Paid')] = 999
+      row[paymentsIndex.headers.indexOf('Balance')] = 999
+    }
+    expect(context.getStudents_({})).toMatchObject([{ totalPaid: 1500.03, balance: 18500 }])
+    expect(context.getPayments_({})[0]).toMatchObject({ totalPaid: 999, balance: 999 })
+  })
+
+  it.each(['Amount Paid', 'Previous Paid', 'Final Fee', 'Total Course Fee', 'Discount'])(
+    'still rejects #NUM! in %s instead of guessing a financial value',
+    (column) => {
+      const { context, admissions, studentsIndex, sourcePayments, paymentsIndex } = indexedFinancialFixture()
+      const sheets = column.endsWith('Paid') ? [sourcePayments, paymentsIndex] : [admissions, studentsIndex]
+      for (const sheet of sheets) sheet.rows[0]![sheet.headers.indexOf(column)] = '#NUM!'
+      const before = structuredClone(sourcePayments.rows)
+      expect(() => context.getDashboardData_()).toThrow('Invalid fee amount: #NUM!')
+      expect(() => context.repairFinancialSummaries()).toThrow('Invalid fee amount: #NUM!')
+      expect(sourcePayments.rows).toEqual(before)
+    },
+  )
+
+  it('refuses to recover damaged snapshots without a matching admission or source receipt', () => {
+    const { context, admissions, paymentsIndex } = indexedFinancialFixture()
+    admissions.rows = []
+    expect(() => context.getPayments_({})).toThrow('no matching admission')
+    paymentsIndex.rows[0]![paymentsIndex.headers.indexOf('Previous Paid')] = ''
+    paymentsIndex.rows[0]![paymentsIndex.headers.indexOf('Receipt ID')] = 'missing'
+    expect(() => context.getPayments_({})).toThrow('source receipt "missing" was not found')
+  })
+
+  it.each([0, 1])('recovers blank Previous Paid from actual source receipts before receipt %s, not payment-date order', (index) => {
+    const { context, sourcePayments, paymentsIndex } = indexedFinancialFixture()
+    for (const sheet of [sourcePayments, paymentsIndex]) {
+      sheet.rows[index]![sheet.headers.indexOf('Previous Paid')] = ''
+    }
+    expect(context.getPayments_({})[index]).toMatchObject(index === 0
+      ? { previousPaid: 0, totalPaid: 1000.01, balance: 19000.02 }
+      : { previousPaid: 1000.01, totalPaid: 1500.03, balance: 18500 })
+    expect(context.repairFinancialSummaries().cellsRepaired).toBe(5)
+    expect(sourcePayments.rows[index]![sourcePayments.headers.indexOf('Previous Paid')]).toBe(index === 0 ? 0 : 1000.01)
+    expect(context.getDashboardData_()).toMatchObject({ totalCollected: 1500.03, outstandingFees: 18500 })
+  })
+
+  it('rejects a mismatched or duplicate source receipt instead of inventing missing Previous Paid', () => {
+    const { context, sourcePayments, paymentsIndex } = indexedFinancialFixture()
+    paymentsIndex.rows[0]![paymentsIndex.headers.indexOf('Previous Paid')] = ''
+    paymentsIndex.rows[0]![paymentsIndex.headers.indexOf('Amount Paid')] = 999
+    expect(() => context.getPayments_({})).toThrow('does not match its source payment')
+    paymentsIndex.rows[0]![paymentsIndex.headers.indexOf('Amount Paid')] = 1000.01
+    sourcePayments.rows.push([...sourcePayments.rows[0]!])
+    expect(() => context.getPayments_({})).toThrow('Duplicate source receipt')
+  })
+
+  it('saves the first payment on an empty sheet, then settles the exact balance through real index writes and dashboard reads', () => {
+    const { context, sourcePayments, paymentsIndex, properties } = indexedFinancialFixture()
+    sourcePayments.rows = []
+    paymentsIndex.rows = []
+    const payload = {
+      idempotencyKey: 'first-empty-sheet-payment', course: 'Test', studentId: 'A',
+      paymentDate: '2026-02-01', amountPaid: 5000.01,
+    }
+    const first = context.addPayment_(payload)
+    expect(first).toMatchObject({ receipt: { previousPaid: 0, totalPaid: 5000.01, balance: 15000.02 } })
+    expect(first.indexWarning).toBeUndefined()
+    expect(context.getDashboardData_()).toMatchObject({ totalCollected: 5000.01, outstandingFees: 15000.02 })
+    expect(context.getStudentDetails_({ studentId: 'A' })).toMatchObject({ totalPaid: 5000.01, balance: 15000.02 })
+    properties.clear()
+    expect(context.addPayment_(payload).receipt).toEqual(first.receipt)
+    expect(sourcePayments.rows).toHaveLength(1)
+    const settled = context.addPayment_({
+      ...payload, idempotencyKey: 'settle-empty-sheet-payment', paymentDate: '2026-01-01', amountPaid: 15000.02,
+    })
+    expect(settled).toMatchObject({ receipt: { previousPaid: 5000.01, totalPaid: 20000.03, balance: 0 } })
+    expect(settled.indexWarning).toBeUndefined()
+    expect(context.getDashboardData_()).toMatchObject({ totalCollected: 20000.03, outstandingFees: 0 })
+    expect(context.getStudents_({})).toMatchObject([{ paymentStatus: 'Paid', paymentCount: 2, balance: 0 }])
+    expect(() => context.addPayment_({ ...payload, idempotencyKey: 'overpaid-empty-sheet-payment', amountPaid: 0.01 }))
+      .toThrow('exceeds')
+    expect(sourcePayments.rows).toHaveLength(2)
+    expect(paymentsIndex.rows).toHaveLength(2)
+  })
+
+  it.each([
+    { previousPaid: undefined, totalPaid: Number.NaN, balance: Number.NaN },
+    { previousPaid: 0, totalPaid: 5000, balance: Number.NaN },
+    { previousPaid: 0, totalPaid: 5001, balance: 14999 },
+    { previousPaid: 0, totalPaid: 5000, balance: 15000, paymentCount: Number.NaN },
+  ])('rejects invalid financial snapshots before writing source cells: %j', (snapshot) => {
+    const { context, sheet } = paymentFixture()
+    expect(() => context.appendPayment_(sheet, { amountPaid: 5000, ...snapshot })).toThrow()
+    expect(sheet.rows).toHaveLength(0)
+  })
+
+  it('previews without writing, repairs only damaged source summary cells, and rebuilds real indexes', () => {
+    const { context, sourcePayments, studentsIndex, properties } = indexedFinancialFixture()
+    const before = structuredClone(sourcePayments.rows)
+    expect(context.previewFinancialSummaryRepair()).toMatchObject({ cellsToRepair: 4, studentCount: 1, paymentCount: 2 })
+    expect(sourcePayments.rows).toEqual(before)
+    expect(properties.size).toBe(0)
+    expect(context.repairFinancialSummaries()).toMatchObject({ cellsRepaired: 4, studentCount: 1, paymentCount: 2 })
+    const summaryColumns = ['Total Paid', 'Balance'].map((column) => sourcePayments.headers.indexOf(column))
+    for (const [index, row] of sourcePayments.rows.entries()) {
+      for (const [column, value] of row.entries()) {
+        if (!summaryColumns.includes(column)) expect(value).toEqual(before[index]![column])
+      }
+    }
+    expect(sourcePayments.rows.map((row) => summaryColumns.map((column) => row[column])))
+      .toEqual([[1000.01, 19000.02], [1500.03, 18500]])
+    expect(studentsIndex.rows[0]![studentsIndex.headers.indexOf('Total Paid')]).toBe(1500.03)
+    expect(studentsIndex.rows[0]![studentsIndex.headers.indexOf('Balance')]).toBe(18500)
+    expect(properties.size).toBe(0)
+    expect(context.getDashboardData_()).toMatchObject({ totalCollected: 1500.03, outstandingFees: 18500 })
+    expect(context.repairFinancialSummaries().cellsRepaired).toBe(0)
+  })
+
+  it('keeps financial access blocked if source repair or index rebuilding is interrupted', () => {
+    for (const failureTarget of ['source', 'index']) {
+      const { context, sourcePayments, paymentsIndex } = indexedFinancialFixture()
+      const sheet = failureTarget === 'source' ? sourcePayments : paymentsIndex
+      sheet.failAfterNextWrite = true
+      expect(() => context.repairFinancialSummaries()).toThrow('Payment write response interrupted')
+      expect(() => context.getDashboardData_()).toThrow('indexes need reconciliation')
+      expect(context.repairFinancialSummaries()).toMatchObject({ studentCount: 1, paymentCount: 2 })
+      expect(context.getDashboardData_()).toMatchObject({ totalCollected: 1500.03, outstandingFees: 18500 })
+    }
+  })
+
+  it('recovers a retried payment with damaged source summaries without adding another transaction', () => {
+    const { context, sheet, properties } = paymentFixture()
+    const payload = { idempotencyKey: 'payment-num-recovery', course: 'Test', studentId: 'A', paymentDate: '2026-01-01', amountPaid: 5000 }
+    context.addPayment_(payload)
+    sheet.rows[0]![sheet.headers.indexOf('Total Paid')] = '#NUM!'
+    sheet.rows[0]![sheet.headers.indexOf('Balance')] = '#NUM!'
+    properties.clear()
+    expect(context.addPayment_(payload).receipt).toMatchObject({ totalPaid: 5000, balance: 15000 })
+    expect(sheet.rows).toHaveLength(1)
+    expect(context.addPayment_({ ...payload, idempotencyKey: 'payment-num-next', amountPaid: 3000 }).receipt)
+      .toMatchObject({ totalPaid: 8000, balance: 12000 })
+    expect(sheet.rows).toHaveLength(2)
+    expect(sheet.rows[1]![sheet.headers.indexOf('Total Paid')]).toBe(8000)
+    expect(sheet.rows[1]![sheet.headers.indexOf('Balance')]).toBe(12000)
+  })
+
   it.each([
     [[], 0, 20000, 'Unpaid'],
     [[5000], 5000, 15000, 'Partially Paid'],

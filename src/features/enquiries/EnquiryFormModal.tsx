@@ -12,6 +12,7 @@ import { getSpecializationOptions } from '../../config/educationOptions'
 import { createEnquiry, fetchCourseCodes, updateEnquiry, type CourseCode, type EnquiryPayload, type EnquiryRecord } from '../../services/api'
 import { CourseDot } from '../courseCodes/CourseLabel'
 import { getEnquiryEducationState, normalizeEnquiryRecord } from './enquiryEducation'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
 
 interface EnquiryFormModalProps {
   enquiry: EnquiryRecord | null
@@ -99,8 +100,7 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
   const [errors, setErrors] = useState<Partial<Record<keyof EnquiryPayload, string>>>({})
   const [submitError, setSubmitError] = useState('')
   const [statusError, setStatusError] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
-  const savingRef = useRef(false)
+  const { isSaving, savingRef, startSaving, finishSaving } = useSaveProtection()
   const originalGraduationYear = useRef(form.yearOfGraduation)
   const referralLocked = Boolean(enquiry?.referral?.trim())
   const consultantLocked = Boolean(enquiry?.consultedBy?.trim())
@@ -215,8 +215,7 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
       return
     }
 
-    savingRef.current = true
-    setIsSaving(true)
+    if (!startSaving()) return
     setSubmitError('')
     try {
       const result = enquiry
@@ -226,8 +225,7 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save the enquiry.')
     } finally {
-      savingRef.current = false
-      setIsSaving(false)
+      finishSaving()
     }
   }
 

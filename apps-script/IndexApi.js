@@ -203,6 +203,84 @@ function alignEnquiryIndexRow_(sheet, headers, values) {
   return actualHeaders.map(function(header) { return Object.prototype.hasOwnProperty.call(valuesByHeader, header) ? valuesByHeader[header] : ""; });
 }
 
+function getFinancialCourses_() {
+  const courses = getRegularCourses_();
+  const otherPrograms = getCourseCodes_().find(function(course) {
+    return normalizeCourseName_(course.courseName) === "other programs";
+  });
+  if (otherPrograms && !courses.some(function(course) {
+    return normalizeCourseName_(course.courseName) === "other programs";
+  })) courses.push(otherPrograms);
+  return courses;
+}
+
+function previewFinancialSummaryRepair() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const repair = buildFinancialSummaryRepair_();
+    const result = { cellsToRepair: repair.updates.length, studentCount: repair.students.length, paymentCount: repair.payments.length };
+    Logger.log(JSON.stringify(result));
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function repairFinancialSummaries() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  let cellsRepaired;
+  try {
+    const repair = buildFinancialSummaryRepair_();
+    PropertiesService.getScriptProperties().setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "financial-summary-repair");
+    repair.updates.forEach(function(update) {
+      update.sheet.getRange(update.row, update.column).setValue(update.value);
+    });
+    cellsRepaired = repair.updates.length;
+  } finally {
+    lock.releaseLock();
+  }
+  const result = rebuildIndexes_();
+  result.cellsRepaired = cellsRepaired;
+  Logger.log(JSON.stringify(result));
+  return result;
+}
+
+function buildFinancialSummaryRepair_() {
+  const courses = getFinancialCourses_();
+  const payments = readPaymentsForCourses_(courses, {});
+  const students = enrichStudentsWithPayments_(readStudentsForCourses_(courses, {}), payments);
+  validateIndexes_(students, payments, [], [], []);
+  sumPaymentAmounts_(payments);
+  const paymentsByReceipt = Object.create(null);
+  payments.forEach(function(payment) { paymentsByReceipt[payment.receiptId] = payment; });
+  const updates = [];
+  courses.forEach(function(course) {
+    const sheet = findPaymentSheetForCourse_(course.courseName).sheet;
+    const info = getPaymentHeaderInfo_(sheet);
+    if (sheet.getLastRow() < 2) return;
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, info.headers.length).getDisplayValues();
+    rows.forEach(function(row, index) {
+      const payment = paymentsByReceipt[String(row[info.columns["Receipt ID"] - 1] || "").trim()];
+      [["Total Paid", "totalPaid"], ["Balance", "balance"]].forEach(function(field) {
+        const column = info.columns[field[0]];
+        if (String(row[column - 1] || "").trim() !== "#NUM!") return;
+        if (!payment) throw new Error("Cannot repair a payment summary without a valid receipt.");
+        moneyToPaise_(payment[field[1]]);
+        updates.push({ sheet: sheet, row: index + 2, column: column, value: payment[field[1]] });
+      });
+      if (String(row[info.columns["Total Paid"] - 1] || "").trim() === "#NUM!" &&
+        String(row[info.columns["Previous Paid"] - 1] || "").trim() === "") {
+        if (!payment) throw new Error("Cannot repair Previous Paid without a valid receipt.");
+        moneyToPaise_(payment.previousPaid);
+        updates.push({ sheet: sheet, row: index + 2, column: info.columns["Previous Paid"], value: payment.previousPaid });
+      }
+    });
+  });
+  return { students: students, payments: payments, updates: updates };
+}
+
 function rebuildIndexes_() {
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -211,14 +289,7 @@ function rebuildIndexes_() {
     const sourceConfigured = Boolean(properties.getProperty(CONFIG.ENQUIRIES_SOURCE_PROPERTY));
     const indexConfigured = Boolean(properties.getProperty(CONFIG.ENQUIRIES_INDEX_PROPERTY));
     if (sourceConfigured !== indexConfigured) throw new Error("Enquiries sheet configuration is incomplete.");
-    const courses = getRegularCourses_();
-    const studentCourses = courses.slice();
-    const otherPrograms = getCourseCodes_().find(function(course) {
-      return normalizeCourseName_(course.courseName) === "other programs";
-    });
-    if (otherPrograms && !studentCourses.some(function(course) {
-      return normalizeCourseName_(course.courseName) === "other programs";
-    })) studentCourses.push(otherPrograms);
+    const studentCourses = getFinancialCourses_();
     const payments = readPaymentsForCourses_(studentCourses, {});
     const students = enrichStudentsWithPayments_(readStudentsForCourses_(studentCourses, {}), payments);
     const visitors = readVisitorSourceRecords_();
@@ -403,9 +474,7 @@ function readIndexedFollowUps_(filters) {
 function mapStudentIndexRow_(row, columns) {
   const student = mapAdmissionRow_(row, columns);
   const value = function(header) { return String(row[columns[header]] || "").trim(); };
-  student.totalPaid = normalizeOptionalMoney_(value("Total Paid")) || 0;
-  student.balance = normalizeOptionalMoney_(value("Balance"));
-  if (student.balance === null) student.balance = student.finalFee;
+  // Financial totals are calculated from receipts by enrichStudentsWithPayments_.
   student.latestPaymentDate = value("Latest Payment Date");
   student.latestReceiptId = value("Latest Receipt ID");
   student.paymentCount = Number(value("Payment Count")) || 0;
