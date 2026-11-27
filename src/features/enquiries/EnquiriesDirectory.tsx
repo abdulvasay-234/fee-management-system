@@ -184,7 +184,6 @@ export function EnquiriesDirectory() {
     <>
       <header className="enquiries-header">
         <div>
-          <span className="page__eyebrow">LSA WORKSPACE</span>
           <h1 className="page__title">Enquiries</h1>
           <p className="page__description">Keep prospective students and their next steps in one place.</p>
         </div>

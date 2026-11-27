@@ -10,7 +10,6 @@ export function StudentsPage() {
     <section className="page page--students">
       <header className="students-page-header">
         <div>
-          <span className="page__eyebrow">LSA WORKSPACE</span>
           <h1 className="page__title">Admissions</h1>
           <p className="page__description">
             Manage admissions, courses, batches, and student records.

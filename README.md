@@ -24,6 +24,13 @@ npm run build
 npm run lint
 ```
 
+## Responsive typography
+
+Interface text uses a shared scale that increases existing sizes by 15% on larger
+screens and 10% on smaller screens, with a 12px minimum for UI text. Form controls
+use at least 16px for readability and to avoid automatic zoom on mobile browsers.
+Admission document typography remains separate to preserve its single-page A4 layout.
+
 ## Course colours
 
 Course labels use automatic colours derived from immutable catalog course codes,

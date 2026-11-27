@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import type { AdmissionConfirmationData } from './admissionConfirmation'
 import { CourseLabel } from '../courseCodes/CourseLabel'
 
@@ -54,6 +54,7 @@ interface AdmissionConfirmationDocumentProps {
 
 export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionConfirmationDocumentProps>(
   function AdmissionConfirmationDocument({ data }, ref) {
+    const sealId = useId()
     const isOtherPrograms = data.course.trim().toLowerCase() === 'other programs'
     const programAndFeeDetails = [
       { label: 'Course', value: data.course },
@@ -74,9 +75,9 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
         <section className="admission-confirmation-document__confirmation">
           <header className="admission-confirmation-document__header">
             <div className="admission-confirmation-document__brand">
-              <img src={lsaBlackLogo} alt="Developed by abdulvasay" />
+              <img src={lsaBlackLogo} alt="Lords Skill Academy" />
               <div>
-                <strong>DEVELOPED BY ABDULVASAY</strong>
+                <strong>LORDS SKILL ACADEMY</strong>
                 <span>An Initiative of Lords Institute of Engineering &amp; Technology</span>
               </div>
             </div>
@@ -91,7 +92,7 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
             <h1>ADMISSION CONFIRMATION</h1>
           </div>
           <p className="admission-confirmation-document__intro">
-            This confirms the student&apos;s admission under the program recorded below. Developed by abdulvasay.
+            This confirms the student&apos;s admission to Lords Skill Academy under the program recorded below.
           </p>
 
           <div className="admission-confirmation-document__details">
@@ -108,11 +109,27 @@ export const AdmissionConfirmationDocument = forwardRef<HTMLElement, AdmissionCo
           </div>
 
           <div className="admission-confirmation-document__official-signature" aria-label="Afnan, LSA official signature and academy seal">
-            <div className="admission-confirmation-document__seal" role="img" aria-label="Developed by abdulvasay, Hyderabad">
-              <span>DEVELOPED BY</span>
-              <span>ABDULVASAY</span>
-              <span>HYDERABAD</span>
-            </div>
+            <svg className="admission-confirmation-document__seal" viewBox="0 0 100 100" width="76" height="76" role="img" aria-label="Lords Skill Academy, Hyderabad">
+              <defs>
+                <path id={`${sealId}-top`} d="M 12,50 A 38,38 0 0,1 88,50" />
+                <path id={`${sealId}-bottom`} d="M 12,50 A 38,38 0 0,0 88,50" />
+              </defs>
+              <g fill="none" stroke="#ff6b35">
+                <circle cx="50" cy="50" r="47" strokeWidth="2.5" />
+                <circle cx="50" cy="50" r="27" strokeWidth="1" />
+              </g>
+              <g fill="#ff6b35" fontFamily="Arial, sans-serif" fontSize="9.5" fontWeight="700" textAnchor="middle">
+                <text textLength="108" lengthAdjust="spacingAndGlyphs">
+                  <textPath href={`#${sealId}-top`} startOffset="50%">LORDS SKILL ACADEMY</textPath>
+                </text>
+                <text letterSpacing="1">
+                  <textPath href={`#${sealId}-bottom`} startOffset="50%">HYDERABAD</textPath>
+                </text>
+                <text x="50" y="55" fontSize="16" letterSpacing="1">LSA</text>
+                <circle cx="10" cy="52" r="1.8" />
+                <circle cx="90" cy="52" r="1.8" />
+              </g>
+            </svg>
             <div className="admission-confirmation-document__signature-copy">
               <span className="admission-confirmation-document__signature-name" aria-hidden="true">Afnan</span>
               <span className="admission-confirmation-document__signature-label">LSA Official</span>

@@ -12,7 +12,7 @@ export function CourseCodesPage() {
   return (
     <section className="page page--course-codes">
       <header className="course-codes-page-header">
-        <div><span className="page__eyebrow">LSA WORKSPACE</span><h1 className="page__title">Course Codes</h1><p className="page__description">Manage course codes used for student admission numbers.</p></div>
+        <div><h1 className="page__title">Course Codes</h1><p className="page__description">Manage course codes used for student admission numbers.</p></div>
         <Button onClick={() => setIsAdding(true)}><Plus aria-hidden="true" size={17} />Add Course</Button>
       </header>
       <CourseCodesManager key={revision} />

@@ -9,7 +9,6 @@ export function PagePlaceholder({ description, title }: PagePlaceholderProps) {
   return (
     <section className="page">
       <header className="page__header">
-        <span className="page__eyebrow">LSA workspace</span>
         <h1 className="page__title">{title}</h1>
         <p className="page__description">{description}</p>
       </header>

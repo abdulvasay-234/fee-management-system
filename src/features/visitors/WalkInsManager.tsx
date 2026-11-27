@@ -159,7 +159,6 @@ export function WalkInsManager() {
     <>
       <header className="visitors-page-header">
         <div>
-          <span className="page__eyebrow">LSA WORKSPACE</span>
           <h1 className="page__title">Walk-ins &amp; Visitors</h1>
           <p className="page__description">Track visitor enquiries, follow-ups, and the journey from first visit to conversion.</p>
         </div>
