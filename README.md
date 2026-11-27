@@ -106,6 +106,14 @@ from the admission's recorded receipts. No payments shows 0; loading or failed
 payment history shows Loading or Unavailable rather than a misleading count.
 Batch timings and admission dates remain available in student records.
 
+Admission numbers use `YYCCBBSS`: admission year, course code, batch, and a
+two-digit serial. The form previews the next serial after the highest saved
+matching ID, rather than always showing 01. While records load or the preview
+is unavailable, it shows SS instead of guessing. The backend assigns the final
+number under its admission lock; another staff member's save can change the
+previewed number. Each year/course/batch supports serials 01 through 99.
+Existing admission IDs are not renumbered.
+
 After a payment is recorded, staff can open a prefilled WhatsApp acknowledgement
 for the student's mobile number. It suggests a next payment date 20 days later
 only when a balance remains; sending the message requires confirmation in

@@ -470,6 +470,22 @@ describe('Enquiry conversion safety', () => {
     expect(fixture.properties.has(TEST_CONVERSION_PROPERTY_KEY)).toBe(false)
   })
 
+  it('saves incrementing YYCCBBSS admission IDs and starts a separate serial for a new batch or year', () => {
+    const fixture = setup()
+    const inputs = [
+      { batch: '01', admissionDate: '2026-10-01' },
+      { batch: '01', admissionDate: '2026-11-01' },
+      { batch: '01', admissionDate: '2026-11-27' },
+      { batch: '02', admissionDate: '2026-11-27' },
+      { batch: '01', admissionDate: '2027-01-01' },
+    ]
+    const ids = inputs.map((details) => fixture.context.addStudent_({ ...fixture.admission, ...details }).student.studentId)
+    expect(ids).toEqual(['26020101', '26020102', '26020103', '26020201', '27020101'])
+    expect(fixture.admissionSheet.rows.map((row) => row[0])).toEqual(ids)
+    expect(fixture.lockAcquisitions).toBe(5)
+    expect(fixture.studentIndexWrites).toBe(5)
+  })
+
   it('allows normal admission on a legacy sheet without conversion or education headers', () => {
     const fixture = setup()
     fixture.admissionSheet.headers.splice(25)

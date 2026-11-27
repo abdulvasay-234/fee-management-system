@@ -21,9 +21,11 @@ import {
   convertEnquiry,
   createAdmission,
   fetchStudent,
+  fetchStudents,
   type AdmissionPayload,
   type ConvertEnquiryResponse,
   type EnquiryRecord,
+  type StudentRecord,
 } from '../../services/api'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot } from '../workflow/workflowTypes'
@@ -200,6 +202,9 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const [isLoadingCourses, setIsLoadingCourses] = useState(true)
   const [, setCourseCodeRevision] = useState(0)
   const [courseLoadError, setCourseLoadError] = useState('')
+  const [admissionRecords, setAdmissionRecords] = useState<Array<Pick<StudentRecord, 'studentId'>> | null>(null)
+  const [admissionNumberLoadError, setAdmissionNumberLoadError] = useState('')
+  const savedAdmissionIds = useRef<Array<Pick<StudentRecord, 'studentId'>>>([])
   const submittingRef = useRef(false)
   const confirmationDocumentRef = useRef<HTMLElement | null>(null)
   const courseCodes = getCachedCourseCodes()
@@ -217,6 +222,16 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     const courseCode = activeCourses.find((course) => course.name === value)?.code
     if (courseCode !== '00') updateField('otherProgramDetails', '')
   }
+
+  useEffect(() => {
+    let active = true
+    void fetchStudents().then((records) => {
+      if (active) setAdmissionRecords([...records, ...savedAdmissionIds.current])
+    }).catch((error: unknown) => {
+      if (active) setAdmissionNumberLoadError(`Admission number preview is unavailable: ${error instanceof Error ? error.message : 'Unable to load saved admissions.'}`)
+    })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -240,6 +255,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     formData.admissionDate,
     formData.course,
     formData.batchNumber,
+    admissionRecords,
   )
 
   function updateField(field: keyof AdmissionFormData, value: string) {
@@ -373,6 +389,8 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       } else {
         const result = await createAdmission(admissionPayload)
         const { student } = result
+        savedAdmissionIds.current.push({ studentId: student.studentId })
+        setAdmissionRecords((current) => current ? [...current, student] : null)
         setAdmissionIndexWarning(result.indexWarning ?? '')
         const admission: AdmissionSnapshot = {
           admissionDate: student.admissionDate,
@@ -477,7 +495,16 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
           {courseLoadMessage && <p className="field__message field__message--error admission-form__full" role="alert">{courseLoadMessage}</p>}
           <Input id="batchNumber" name="batchNumber" label="Batch Number" required inputMode="numeric" maxLength={2} placeholder="01" value={formData.batchNumber} error={errors.batchNumber} hint="Two-digit numeric batch code." onChange={handleBatchChange} />
           <Input id="admissionDate" name="admissionDate" label="Admission Date" required type="date" value={formData.admissionDate} error={errors.admissionDate} onChange={handleInputChange} />
-          <Input id="admissionNumber" label="Admission Number" value={admissionNumber} disabled hint="Preview only. The backend will assign the final sequence." />
+          <Input
+            id="admissionNumber"
+            label="Admission Number"
+            value={admissionNumber.number}
+            disabled
+            error={admissionNumberLoadError || admissionNumber.error}
+            hint={admissionRecords === null && !admissionNumberLoadError
+              ? 'Loading the next serial number...'
+              : 'YYCCBBSS: year, course code, batch, serial. Preview only; the final number is assigned when saved.'}
+          />
           <dl className="admission-derived-fields">
             <div><dt>Admission Year</dt><dd>{admissionMetadata.admissionYear}</dd></div>
             <div><dt>Enrollment Month</dt><dd>{admissionMetadata.enrollmentMonth}</dd></div>

@@ -5,8 +5,15 @@ vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
   CourseLabel: ({ name }: { name: string }) => name,
 }))
 
+vi.mock('../../src/features/courseCodes/courseCodeService.ts', () => ({
+  getCourseCodeByName: (name: string) => name === 'Data Science'
+    ? { code: '02' }
+    : name === 'Cyber Security' ? { code: '03' } : undefined,
+}))
+
 const modulePath = fileURLToPath(new URL('../../src/features/students/studentDirectoryUtils.ts', import.meta.url))
 const { summarizeAdmissions, courseNavigation, batchNavigation, filterAdmissions, formatAdmissionFeeStatus } = await import(modulePath)
+const { getAdmissionNumberPreview } = await import(fileURLToPath(new URL('../../src/features/admissions/admissionFormUtils.ts', import.meta.url)))
 
 const students = [
   { studentId: 'A001', fullName: 'Anita Rao', mobileNumber: '9876543210', email: 'anita@example.test', course: 'Data Science', batch: '01', enrollmentYear: '2025', admissionDate: '2026-02-28' },
@@ -15,6 +22,33 @@ const students = [
 ]
 
 describe('admissions directory', () => {
+  it('previews the next serial after the highest matching saved admission, including gaps and reordered records', () => {
+    const admissions = ['26020103', '27020188', '26020299', '26030199', '26020101', ' 26020109 ', '260201100', '260201xx']
+      .map((studentId) => ({ studentId }))
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '01', admissions)).toEqual({ number: '26020110' })
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '01', [])).toEqual({ number: '26020101' })
+  })
+
+  it('keeps serial sequences separate for each year, course code and batch', () => {
+    const admissions = [{ studentId: '26020101' }, { studentId: '26020102' }]
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '01', admissions).number).toBe('26020103')
+    expect(getAdmissionNumberPreview('2027-01-01', 'Data Science', '01', admissions).number).toBe('27020101')
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '02', admissions).number).toBe('26020201')
+    expect(getAdmissionNumberPreview('2026-11-27', 'Cyber Security', '01', admissions).number).toBe('26030101')
+  })
+
+  it('does not invent serial 01 when records or required admission details are unavailable', () => {
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '01', null)).toEqual({ number: '260201SS' })
+    expect(getAdmissionNumberPreview('', 'Unknown course', '', [])).toEqual({ number: 'YYCCBBSS' })
+  })
+
+  it('reports the existing two-digit serial limit instead of previewing a nine-digit ID', () => {
+    expect(getAdmissionNumberPreview('2026-11-27', 'Data Science', '01', [{ studentId: '26020199' }])).toEqual({
+      number: '260201SS',
+      error: 'All 99 serial numbers for this year, course and batch have been used. Choose another batch.',
+    })
+  })
+
   it.each([
     { balance: 4250.50, mobileNumber: '9000000001', available: true, error: false },
     { balance: 0.01, mobileNumber: '9000000001', available: true, error: false },

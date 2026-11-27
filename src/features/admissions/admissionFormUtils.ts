@@ -62,11 +62,27 @@ export function getAdmissionNumberPreview(
   admissionDate: string,
   course: string,
   batchNumber: string,
+  admissions: readonly { studentId: string }[] | null,
 ) {
   const year = admissionDate ? admissionDate.slice(2, 4) : 'YY'
   const courseCode = getCourseCodeByName(course)?.code ?? 'CC'
   const batch = /^\d{2}$/.test(batchNumber) ? batchNumber : 'BB'
-  return `${year}${courseCode}${batch}01`
+  const prefix = `${year}${courseCode}${batch}`
+  if (!admissions || !/^\d{6}$/.test(prefix)) return { number: `${prefix}SS` }
+
+  const highestSerial = admissions.reduce((highest, admission) => {
+    const id = admission.studentId.trim()
+    return /^\d{8}$/.test(id) && id.startsWith(prefix)
+      ? Math.max(highest, Number(id.slice(6)))
+      : highest
+  }, 0)
+  if (highestSerial >= 99) {
+    return {
+      number: `${prefix}SS`,
+      error: 'All 99 serial numbers for this year, course and batch have been used. Choose another batch.',
+    }
+  }
+  return { number: `${prefix}${String(highestSerial + 1).padStart(2, '0')}` }
 }
 
 export function validateAdmissionForm(data: AdmissionFormData) {
