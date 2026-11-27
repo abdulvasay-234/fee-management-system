@@ -18,6 +18,7 @@ type ConversionContext = vm.Context & {
   convertEnquiry_: (payload: { enquiryId: string; admission?: Record<string, unknown> }) => ConversionResult
   dispatchGatewayAction_: (action: string, parameters: object, identity: object) => ConversionResult
   getEnquiriesSourceSheet_: () => FakeSheet
+  getEnquiriesSheet_: (propertyName: string) => FakeSheet
   getStudentDetails_: (parameters: { studentId: string }) => { student: Record<string, unknown>; payments: unknown[] }
   findAdmissionSheetForCourse_: () => { sheet: FakeSheet }
   findCourseCodeByName_: (courseName: string) => { code: string; active: string }
@@ -250,6 +251,91 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
 }
 
 describe('Enquiry conversion safety', () => {
+  it.each([undefined, 'Synthetic Optional College'])(
+    'saves optional college in source and index sheets and preserves it on a status edit (%s)',
+    (college) => {
+      const fixture = setup()
+      const headers = vm.runInContext('CONFIG.ENQUIRY_HEADERS', fixture.context) as string[]
+      const source = new FakeSheet('enquiry-source', headers.filter((header) => header !== 'College'), fixture.events)
+      const index = new FakeSheet('enquiry-index', headers.filter((header) => header !== 'College'), fixture.events)
+      vm.runInContext(readFileSync(new URL('../../apps-script/IndexApi.js', import.meta.url), 'utf8'), fixture.context)
+      const [sourceProperty, indexProperty] = vm.runInContext(
+        '[CONFIG.ENQUIRIES_SOURCE_PROPERTY, CONFIG.ENQUIRIES_INDEX_PROPERTY]', fixture.context,
+      ) as [string, string]
+      fixture.context.getEnquiriesSheet_ = (propertyName) => {
+        if (propertyName === sourceProperty) return source
+        if (propertyName === indexProperty) return index
+        throw new Error(`Unexpected enquiry sheet property: ${propertyName}`)
+      }
+      type SaveResult = { success: boolean; data: Record<string, unknown>; indexWarning?: string }
+      const add = vm.runInContext('addEnquiry_', fixture.context) as (payload: Record<string, unknown>) => SaveResult
+      const update = vm.runInContext('updateEnquiry_', fixture.context) as (payload: Record<string, unknown>) => SaveResult
+      const read = vm.runInContext(
+        '(function(sheet) { return readSheetRecords_(sheet, CONFIG.ENQUIRY_HEADERS, mapEnquiryRow_); })',
+        fixture.context,
+      ) as (sheet: FakeSheet) => Array<Record<string, unknown>>
+      const saved = add({
+        fullName: 'Synthetic College Test', mobileNumber: TEST_PHONE_PRIMARY,
+        educationLevel: 'B.Tech', courseInterestedIn: 'Data Science', enquiryDate: '2026-11-27',
+        referral: 'Website', consultedBy: 'Test Staff',
+        ...(college === undefined ? {} : { college }),
+      })
+      expect(saved.success).toBe(true)
+      expect(saved.indexWarning).toBeUndefined()
+      const edited = update({ enquiryId: saved.data.enquiryId, status: 'Follow-up' })
+      expect(edited.indexWarning).toBeUndefined()
+      for (const sheet of [source, index]) {
+        expect(sheet.headers.filter((header) => header === 'College')).toHaveLength(1)
+        expect(read(sheet)).toMatchObject([{
+          enquiryId: saved.data.enquiryId, college: college ?? '', status: 'Follow-up',
+          referral: 'Website', consultedBy: 'Test Staff', enquiryDate: '2026-11-27',
+        }])
+        expect(sheet.rows[0][sheet.headers.indexOf('College')]).toBe(college ?? '')
+      }
+    },
+  )
+
+  it.each([
+    { field: 'referral', value: 'Different Referral', label: 'Referral' },
+    { field: 'referral', value: '', label: 'Referral' },
+    { field: 'consultedBy', value: 'Different Consultant', label: 'Consulted By' },
+    { field: 'consultedBy', value: '', label: 'Consulted By' },
+    { field: 'enquiryDate', value: '2026-11-27', label: 'Enquiry Date' },
+    { field: 'enquiryDate', value: '', label: 'Enquiry Date' },
+  ])('rejects changing or clearing saved $field before writing', ({ field, value, label }) => {
+    const fixture = setup()
+    const update = vm.runInContext('updateEnquiry_', fixture.context) as (payload: Record<string, unknown>) => unknown
+    expect(() => update({ enquiryId: TEST_ENQUIRY_ID, [field]: value })).toThrow(
+      `${label} cannot be changed after it has been saved.`,
+    )
+    expect(fixture.enquirySheet.writes).toBe(0)
+    expect(fixture.enquiryIndexWrites).toBe(0)
+  })
+
+  it('allows first-time attribution and unchanged saved values while preserving other edits', () => {
+    const fixture = setup()
+    const parse = vm.runInContext('enquiryFromPayload_', fixture.context) as (
+      payload: Record<string, unknown>, existing: Record<string, unknown> | null,
+    ) => Record<string, unknown>
+    const saved = parse(
+      { referral: 'Custom Referral', consultedBy: 'Custom Consultant' },
+      { ...fixture.enquiryRecord, referral: '', consultedBy: '' },
+    )
+    const edited = parse({
+      referral: ' Custom Referral ', consultedBy: 'Custom Consultant', enquiryDate: saved.enquiryDate,
+      status: 'Follow-up', notes: 'Updated notes',
+    }, saved)
+    expect(edited).toMatchObject({
+      referral: 'Custom Referral', consultedBy: 'Custom Consultant', enquiryDate: '2026-10-01',
+      status: 'Follow-up', notes: 'Updated notes',
+    })
+    expect(() => parse({ consultedBy: 'Replacement Consultant' }, edited)).toThrow('Consulted By cannot be changed')
+    expect(() => parse({ referral: '' }, edited)).toThrow('Referral cannot be changed')
+    expect(parse({ ...fixture.enquiryRecord, referral: 'New Referral', consultedBy: 'New Consultant' }, null)).toMatchObject({
+      referral: 'New Referral', consultedBy: 'New Consultant',
+    })
+  })
+
   it('migrates legacy enquiry headers by name and preserves historical row values', () => {
     const fixture = setup()
     const legacyHeaders = [

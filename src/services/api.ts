@@ -1,4 +1,5 @@
 import { getIdToken, notifyAuthFailure } from '../auth/authService'
+import { encodeEnquiryPayload, normalizeEnquiryRecord } from '../features/enquiries/enquiryEducation'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const REQUEST_TIMEOUT_MS = 15_000
@@ -228,6 +229,9 @@ export interface EnquiryRecord {
   updatedAt: string
   degreeCourse?: string
 }
+
+export type EnquiryApiRecord = Omit<EnquiryRecord, 'educationLevel' | 'specialization' | 'yearOfGraduation' | 'otherProgramDetails'>
+  & Partial<Pick<EnquiryRecord, 'educationLevel' | 'specialization' | 'yearOfGraduation' | 'otherProgramDetails'>>
 
 export interface ConvertEnquiryPayload {
   enquiryId: string
@@ -469,9 +473,9 @@ export async function fetchDashboard() {
 }
 
 export async function fetchEnquiries() {
-  const result = await request<{ success: true; data: EnquiryRecord[] }>('?action=enquiries')
+  const result = await request<{ success: true; data: EnquiryApiRecord[] }>('?action=enquiries')
   if (!Array.isArray(result.data)) throw new Error('The LSA API returned invalid enquiries.')
-  return result.data
+  return result.data.map(normalizeEnquiryRecord)
 }
 
 export function convertEnquiry(payload: ConvertEnquiryPayload) {
@@ -479,11 +483,22 @@ export function convertEnquiry(payload: ConvertEnquiryPayload) {
 }
 
 export function createEnquiry(payload: EnquiryPayload) {
-  return postIdempotent<{ success: true; data: EnquiryRecord; indexWarning?: string }>('add-enquiry', payload)
+  return postIdempotent<{ success: true; data: EnquiryApiRecord; indexWarning?: string }>('add-enquiry', encodeEnquiryPayload(payload))
+    .then((result) => normalizeSavedEnquiry(result, payload))
 }
 
 export function updateEnquiry(enquiryId: string, payload: EnquiryPayload & { status: EnquiryRecord['status'] }) {
-  return post<{ success: true; data: EnquiryRecord; indexWarning?: string }>({ action: 'update-enquiry', enquiryId, ...payload })
+  return post<{ success: true; data: EnquiryApiRecord; indexWarning?: string }>({ action: 'update-enquiry', enquiryId, ...encodeEnquiryPayload(payload) })
+    .then((result) => normalizeSavedEnquiry(result, payload))
+}
+
+function normalizeSavedEnquiry(result: { success: true; data: EnquiryApiRecord; indexWarning?: string }, payload: EnquiryPayload) {
+  const data = normalizeEnquiryRecord(result.data)
+  const retained = data.educationLevel === payload.educationLevel.trim()
+    && data.specialization === payload.specialization.trim()
+    && data.yearOfGraduation === payload.yearOfGraduation.trim()
+  const warning = retained ? '' : 'Enquiry saved, but the server did not return the submitted education details. Do not submit again; contact an administrator to check the saved record.'
+  return { ...result, data, indexWarning: [result.indexWarning, warning].filter(Boolean).join(' ') || undefined }
 }
 
 export async function fetchWalkIns(filters: Record<string, string | undefined> = {}) {

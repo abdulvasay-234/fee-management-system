@@ -337,7 +337,7 @@ export function EnquiriesDirectory() {
               {expandedGroups.has(group.date) && (
                 <div className="enquiries-table-wrapper">
                   <Table className="enquiries-table">
-                    <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Education Level</th><th>Course Interested</th><th>College</th><th>Status</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Education Level</th><th>Course Interested</th><th>College Name</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody>
                       {group.enquiries.map((item) => (
                         <tr key={item.enquiryId}>
@@ -403,7 +403,7 @@ export function EnquiriesDirectory() {
                   <Card className="enquiries-mobile-item" key={item.enquiryId}>
                     <div className="enquiries-mobile-item__heading"><div><strong>{item.fullName}</strong><CourseLabel name={item.courseInterestedIn} /></div><Badge variant={statusVariant(item.status)}>{item.status}</Badge></div>
                     <dl>
-                      <div><dt>Mobile</dt><dd>{item.mobileNumber}</dd></div><div><dt>Email</dt><dd>{item.email || '-'}</dd></div><div><dt>Education Level</dt><dd>{item.educationLevel || item.degreeCourse || '-'}</dd></div><div><dt>College</dt><dd>{item.college || '-'}</dd></div>{item.admissionId && <div><dt>Admission ID</dt><dd>{item.admissionId}</dd></div>}
+                      <div><dt>Mobile</dt><dd>{item.mobileNumber}</dd></div><div><dt>Email</dt><dd>{item.email || '-'}</dd></div><div><dt>Education Level</dt><dd>{item.educationLevel || item.degreeCourse || '-'}</dd></div><div><dt>College Name</dt><dd>{item.college || '-'}</dd></div>{item.admissionId && <div><dt>Admission ID</dt><dd>{item.admissionId}</dd></div>}
                     </dl>
                     <div className="enquiries-mobile-item__actions">
                       <Button variant="secondary" onClick={() => setFormEnquiry(item)}>Edit</Button>

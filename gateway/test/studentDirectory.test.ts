@@ -1,5 +1,9 @@
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
+  CourseLabel: ({ name }: { name: string }) => name,
+}))
 
 const modulePath = fileURLToPath(new URL('../../src/features/students/studentDirectoryUtils.ts', import.meta.url))
 const { summarizeAdmissions, courseNavigation, batchNavigation, filterAdmissions, formatAdmissionFeeStatus } = await import(modulePath)
@@ -11,6 +15,25 @@ const students = [
 ]
 
 describe('admissions directory', () => {
+  it.each([
+    { balance: 0, blocked: true },
+    { balance: -10, blocked: true },
+    { balance: 0.01, blocked: false },
+  ])('blocks Make Payment only when no fees remain (balance $balance)', async ({ balance, blocked }) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { StudentDetailsModal } = await import(fileURLToPath(new URL('../../src/features/students/StudentDetailsModal.tsx', import.meta.url)))
+    const { mockStudents } = await import(fileURLToPath(new URL('../../src/features/students/mockStudentData.ts', import.meta.url)))
+    const student = { ...mockStudents[0], balance, totalPaid: mockStudents[0].finalFee - balance }
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(StudentDetailsModal, {
+      student, onClose: vi.fn(), onMakePayment: vi.fn(), payments: [], paymentsError: '', paymentsLoading: false,
+    })))
+    const attributes = html.match(/<button\b([^>]*)>(?:(?!<\/button>)[\s\S])*?Make Payment<\/button>/)?.[1]
+    expect(attributes).toBeDefined()
+    expect(/\bdisabled=/i.test(attributes ?? '')).toBe(blocked)
+  })
+
   it('shows the recorded pending due or paid without treating missing balances as paid', () => {
     expect(formatAdmissionFeeStatus(12000.50)).toBe('Pending Due: ₹12,000.50')
     expect(formatAdmissionFeeStatus(0.01)).toBe('Pending Due: ₹0.01')
@@ -19,6 +42,33 @@ describe('admissions directory', () => {
     expect(formatAdmissionFeeStatus(undefined)).toBe('Unavailable')
     expect(formatAdmissionFeeStatus(NaN)).toBe('Unavailable')
     expect(formatAdmissionFeeStatus(Infinity)).toBe('Unavailable')
+  })
+
+  it.each([
+    { count: 5, loading: false, error: '', expected: '5' },
+    { count: 0, loading: false, error: '', expected: '0' },
+    { count: 5, loading: true, error: '', expected: 'Loading...' },
+    { count: 5, loading: false, error: 'Payment history unavailable.', expected: 'Unavailable' },
+  ])('shows the completed payment count in Fee Information ($expected)', async ({ count, loading, error, expected }) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { StudentDetailsModal } = await import(fileURLToPath(new URL('../../src/features/students/StudentDetailsModal.tsx', import.meta.url)))
+    const { mockStudents } = await import(fileURLToPath(new URL('../../src/features/students/mockStudentData.ts', import.meta.url)))
+    const student = mockStudents[0]
+    const payments = Array.from({ length: count }, (_, index) => ({
+      paymentId: `TEST-PAYMENT-${index + 1}`, receiptId: `TEST-RECEIPT-${index + 1}`,
+      studentId: student.studentId, studentName: student.fullName, course: student.course, batch: student.batch,
+      enrollmentMonth: student.enrollmentMonth, enrollmentYear: student.enrollmentYear,
+      paymentDate: '2026-11-27', feeType: 'Course Fee', amountPaid: 1000, paymentMode: 'Cash',
+      previousPaid: index * 1000, totalPaid: (index + 1) * 1000, balance: student.finalFee - (index + 1) * 1000,
+      createdBy: 'Test Staff', createdAt: '2026-11-27', remarks: '',
+    }))
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(StudentDetailsModal, {
+      student, onClose: vi.fn(), onMakePayment: vi.fn(), payments, paymentsError: error, paymentsLoading: loading,
+    })))
+    const feeSection = html.match(/<section class="student-detail-group"><h3>Fee Information<\/h3>[\s\S]*?<\/section>/)?.[0]
+    expect(feeSection).toContain(`<dt>Number of Instalments / Payments Done</dt><dd>${expected}</dd>`)
   })
 
   it('counts unique admissions by their local calendar admission date', () => {

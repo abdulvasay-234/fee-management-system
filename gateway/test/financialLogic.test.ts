@@ -251,6 +251,64 @@ describe('Apps Script financial calculations', () => {
       .toMatchObject({ studentId: 'C', totalPaid: 5000, balance: 15000 })
   })
 
+  it.each([undefined, '', '   '])('rejects Cash with missing receiver remarks (%s) before recording a payment', (remarks) => {
+    const { context, sheet } = paymentFixture()
+    expect(() => context.addPayment_({
+      idempotencyKey: 'cash-receiver-required', course: 'Test', studentId: 'A',
+      paymentDate: '2026-01-01', amountPaid: 5000, paymentMode: 'Cash', remarks,
+    })).toThrow('LSA staff name who received the cash')
+    expect(sheet.rows).toHaveLength(0)
+  })
+
+  it('stores the Cash receiver in source and index remarks without duplicating retries', () => {
+    const { context, sheet } = paymentFixture()
+    let indexedRemarks: string | undefined
+    context.synchronizePaymentIndexes_ = (record: { remarks: string }) => { indexedRemarks = record.remarks }
+    const payload = {
+      idempotencyKey: 'cash-receiver-saved', course: 'Test', studentId: 'A',
+      paymentDate: '2026-01-01', amountPaid: 5000, paymentMode: 'Cash', remarks: '  Test Staff  ',
+    }
+    expect(context.addPayment_(payload).receipt.totalPaid).toBe(5000)
+    expect(sheet.rows[0][sheet.headers.indexOf('Remarks')]).toBe('Test Staff')
+    expect(indexedRemarks).toBe('Test Staff')
+    expect(context.addPayment_(payload).receipt.totalPaid).toBe(5000)
+    expect(sheet.rows).toHaveLength(1)
+  })
+
+  it.each(['UPI', 'Bank Transfer'])('keeps remarks optional for %s', (paymentMode) => {
+    const { context, sheet } = paymentFixture()
+    expect(context.addPayment_({
+      idempotencyKey: 'non-cash-remarks-optional', course: 'Test', studentId: 'A',
+      paymentDate: '2026-01-01', amountPaid: 5000, paymentMode,
+    }).receipt.totalPaid).toBe(5000)
+    expect(sheet.rows).toHaveLength(1)
+  })
+
+  it('recovers an already-saved Cash payment without old receiver remarks', () => {
+    const { context, sheet, properties } = paymentFixture()
+    context.ensurePaymentIdempotencyColumns_(sheet)
+    const payload = {
+      idempotencyKey: 'legacy-cash-recovery', course: 'Test', studentId: 'A',
+      paymentDate: '2026-01-01', amountPaid: 5000, paymentMode: 'Cash',
+    }
+    const idempotency = context.getIdempotencyContext_('add-payment', payload)
+    const values: Record<string, unknown> = {
+      'Receipt ID': 'TEST-LEGACY-CASH', 'Student ID': 'A', 'Student Name': 'Test Student',
+      Course: 'Test', Batch: '01', 'Enrollment Month': 'January', 'Enrollment Year': '2026',
+      'Payment Date': '2026-01-01', 'Amount Paid': 5000, 'Payment Mode': 'Cash',
+      'Previous Paid': 0, 'Total Paid': 5000, Balance: 15000, 'Created At': '2026-01-01',
+      'Idempotency Key': idempotency.key, 'Idempotency Fingerprint': idempotency.fingerprint,
+    }
+    sheet.rows.push(sheet.headers.map((header) => values[header] ?? ''))
+    const dirtyProperty = vm.runInContext('FINANCIAL_INDEX_DIRTY_PROPERTY_', context) as string
+    properties.set(dirtyProperty, `payment:${payload.idempotencyKey}`)
+    expect(context.addPayment_(payload).receipt).toMatchObject({
+      receiptId: 'TEST-LEGACY-CASH', totalPaid: 5000, balance: 15000,
+    })
+    expect(sheet.rows).toHaveLength(1)
+    expect(properties.get(dirtyProperty)).toBeUndefined()
+  })
+
   it('recovers a payment when the source row was saved but the response was interrupted', () => {
     const { context, sheet } = paymentFixture()
     const payload = { idempotencyKey: 'payment-key-recovery', course: 'Test', studentId: 'A', paymentDate: '2026-01-01', amountPaid: 5000 }

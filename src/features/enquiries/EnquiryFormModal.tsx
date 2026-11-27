@@ -11,6 +11,7 @@ import {
 import { getSpecializationOptions } from '../../config/educationOptions'
 import { createEnquiry, fetchCourseCodes, updateEnquiry, type CourseCode, type EnquiryPayload, type EnquiryRecord } from '../../services/api'
 import { CourseDot } from '../courseCodes/CourseLabel'
+import { getEnquiryEducationState, normalizeEnquiryRecord } from './enquiryEducation'
 
 interface EnquiryFormModalProps {
   enquiry: EnquiryRecord | null
@@ -21,6 +22,7 @@ interface EnquiryFormModalProps {
 }
 
 function initialForm(enquiry: EnquiryRecord | null): EnquiryPayload {
+  enquiry = enquiry ? normalizeEnquiryRecord(enquiry) : null
   const now = new Date()
   const legacyNotes = readLegacyNotes(enquiry?.notes ?? '')
   return {
@@ -28,7 +30,7 @@ function initialForm(enquiry: EnquiryRecord | null): EnquiryPayload {
     mobileNumber: enquiry?.mobileNumber ?? '',
     email: enquiry?.email ?? '',
     college: enquiry?.college ?? '',
-    educationLevel: enquiry?.educationLevel ?? enquiry?.degreeCourse ?? '',
+    educationLevel: enquiry?.educationLevel ?? '',
     specialization: enquiry?.specialization ?? '',
     yearOfGraduation: enquiry?.yearOfGraduation ?? '',
     courseInterestedIn: enquiry?.courseInterestedIn ?? '',
@@ -76,18 +78,16 @@ function validate(form: EnquiryPayload) {
 }
 
 export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission, onSaved }: EnquiryFormModalProps) {
+  const [initialEducation] = useState(() => getEnquiryEducationState(enquiry))
   const [form, setForm] = useState<EnquiryPayload>(() => initialForm(enquiry))
   const [otherProgramError, setOtherProgramError] = useState('')
-  const [educationLevelChoice, setEducationLevelChoice] = useState(() => selectedChoice(enquiry?.educationLevel ?? enquiry?.degreeCourse ?? '', educationLevelOptions))
-  const [otherEducationLevel, setOtherEducationLevel] = useState(() => legacyValue(enquiry?.educationLevel ?? enquiry?.degreeCourse ?? '', educationLevelOptions))
-  const initialEducationLevel = enquiry?.educationLevel ?? enquiry?.degreeCourse ?? ''
-  const initialSpecializationOptions = getSpecializationOptions(initialEducationLevel || otherOption)
-  const [specializationChoice, setSpecializationChoice] = useState(() => selectedChoice(enquiry?.specialization ?? '', initialSpecializationOptions))
-  const [otherSpecialization, setOtherSpecialization] = useState(() => legacyValue(enquiry?.specialization ?? '', initialSpecializationOptions))
+  const [educationLevelChoice, setEducationLevelChoice] = useState(initialEducation.educationLevelChoice)
+  const [otherEducationLevel, setOtherEducationLevel] = useState(initialEducation.otherEducationLevel)
+  const [specializationChoice, setSpecializationChoice] = useState(initialEducation.specializationChoice)
+  const [otherSpecialization, setOtherSpecialization] = useState(initialEducation.otherSpecialization)
   const graduationYears = getGraduationYearOptions()
-  const graduationOptions = [...graduationYears, 'Currently Pursuing', otherOption]
-  const [graduationChoice, setGraduationChoice] = useState(() => selectedChoice(enquiry?.yearOfGraduation ?? '', graduationOptions))
-  const [otherGraduationYear, setOtherGraduationYear] = useState(() => legacyValue(enquiry?.yearOfGraduation ?? '', graduationOptions))
+  const [graduationChoice, setGraduationChoice] = useState(initialEducation.graduationChoice)
+  const [otherGraduationYear, setOtherGraduationYear] = useState(initialEducation.otherGraduationYear)
   const [referralChoice, setReferralChoice] = useState(() => selectedChoice(enquiry?.referral ?? '', referralOptions))
   const [otherReferral, setOtherReferral] = useState(() => legacyValue(enquiry?.referral ?? '', referralOptions))
   const [consultantChoice, setConsultantChoice] = useState(() => selectedChoice(enquiry?.consultedBy ?? '', consultantOptions))
@@ -101,7 +101,9 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
   const [statusError, setStatusError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const savingRef = useRef(false)
-  const originalGraduationYear = useRef(enquiry?.yearOfGraduation ?? '')
+  const originalGraduationYear = useRef(form.yearOfGraduation)
+  const referralLocked = Boolean(enquiry?.referral?.trim())
+  const consultantLocked = Boolean(enquiry?.consultedBy?.trim())
 
   useEffect(() => {
     let active = true
@@ -245,7 +247,7 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
             <Input id="enquiry-name" name="fullName" label="Full Name" value={form.fullName} onChange={handleChange} error={errors.fullName} required />
             <Input id="enquiry-mobile" name="mobileNumber" label="Mobile Number" type="tel" inputMode="tel" value={form.mobileNumber} onChange={handleChange} error={errors.mobileNumber} required />
             <Input id="enquiry-email" name="email" label="Email" type="email" value={form.email} onChange={handleChange} error={errors.email} />
-            <Input id="enquiry-college" name="college" label="College" value={form.college} onChange={handleChange} />
+            <Input id="enquiry-college" name="college" label="College Name" placeholder="Enter college name" value={form.college} onChange={handleChange} />
           </div>
         </section>
 
@@ -278,17 +280,17 @@ export function EnquiryFormModal({ enquiry, onClose, onConvert, onViewAdmission,
             />
             {isOtherProgramSelected && <Input id="enquiry-other-program-details" label="Program / Training Interested In" value={form.otherProgramDetails} onChange={(event) => { setForm((current) => ({ ...current, otherProgramDetails: event.target.value })); setOtherProgramError('') }} error={otherProgramError} required />}
             {courseLoadError && <p className="field__message field__message--error enquiry-form__full" role="alert">Unable to load Course Codes: {courseLoadError}</p>}
-            <Select id="enquiry-referral" label="Referral" options={[{ label: 'Select referral', value: '' }, ...referralOptions.map((value) => ({ label: value, value }))]} value={referralChoice} onChange={(event) => { setReferralChoice(event.target.value); setErrors((current) => ({ ...current, referral: undefined })) }} error={referralChoice !== otherOption ? errors.referral : undefined} />
-            {referralChoice === otherOption && <Input id="enquiry-other-referral" label="Other Referral" value={otherReferral} onChange={(event) => { setOtherReferral(event.target.value); setErrors((current) => ({ ...current, referral: undefined })) }} error={errors.referral} required />}
-            <Select id="enquiry-consulted" label="Consulted By" options={[{ label: 'Select consultant', value: '' }, ...consultantOptions.map((value) => ({ label: value, value }))]} value={consultantChoice} onChange={(event) => { setConsultantChoice(event.target.value); setErrors((current) => ({ ...current, consultedBy: undefined })) }} error={consultantChoice !== otherOption ? errors.consultedBy : undefined} />
-            {consultantChoice === otherOption && <Input id="enquiry-other-consultant" label="Other Consultant" value={otherConsultant} onChange={(event) => { setOtherConsultant(event.target.value); setErrors((current) => ({ ...current, consultedBy: undefined })) }} error={errors.consultedBy} required />}
+            <Select id="enquiry-referral" label="Referral" options={[{ label: 'Select referral', value: '' }, ...referralOptions.map((value) => ({ label: value, value }))]} value={referralChoice} disabled={referralLocked} onChange={(event) => { setReferralChoice(event.target.value); setErrors((current) => ({ ...current, referral: undefined })) }} error={referralChoice !== otherOption ? errors.referral : undefined} />
+            {referralChoice === otherOption && <Input id="enquiry-other-referral" label="Other Referral" value={otherReferral} readOnly={referralLocked} onChange={(event) => { setOtherReferral(event.target.value); setErrors((current) => ({ ...current, referral: undefined })) }} error={errors.referral} required />}
+            <Select id="enquiry-consulted" label="Consulted By" options={[{ label: 'Select consultant', value: '' }, ...consultantOptions.map((value) => ({ label: value, value }))]} value={consultantChoice} disabled={consultantLocked} onChange={(event) => { setConsultantChoice(event.target.value); setErrors((current) => ({ ...current, consultedBy: undefined })) }} error={consultantChoice !== otherOption ? errors.consultedBy : undefined} />
+            {consultantChoice === otherOption && <Input id="enquiry-other-consultant" label="Other Consultant" value={otherConsultant} readOnly={consultantLocked} onChange={(event) => { setOtherConsultant(event.target.value); setErrors((current) => ({ ...current, consultedBy: undefined })) }} error={errors.consultedBy} required />}
           </div>
         </section>
 
         <section className="enquiry-form__section">
           <h3>Additional Information</h3>
           <div className="enquiry-form__grid">
-            <Input id="enquiry-date" name="enquiryDate" label="Enquiry Date" type="date" value={form.enquiryDate} onChange={handleChange} error={errors.enquiryDate} required />
+            <Input id="enquiry-date" name="enquiryDate" label="Enquiry Date" type="date" value={form.enquiryDate} readOnly={Boolean(enquiry)} onChange={handleChange} error={errors.enquiryDate} required />
             {enquiry && (enquiry.status === 'Converted' ? (
               <div className="enquiry-form__readonly">
                 <span>Status</span><strong>Converted</strong>

@@ -3636,8 +3636,18 @@ function visitorFromPayload_(payload, existing) {
 function enquiryFromPayload_(payload, existing) {
   const enquiry = existing ? Object.assign({}, existing) : {};
   const fields = ["fullName", "mobileNumber", "email", "college", "educationLevel", "specialization", "yearOfGraduation", "courseInterestedIn", "otherProgramDetails", "referral", "notes", "consultedBy", "enquiryDate"];
+  const lockedFields = { referral: "Referral", consultedBy: "Consulted By", enquiryDate: "Enquiry Date" };
   fields.forEach(function(field) {
-    if (!existing || Object.prototype.hasOwnProperty.call(payload, field)) enquiry[field] = String(payload[field] || "").trim();
+    if (!existing || Object.prototype.hasOwnProperty.call(payload, field)) {
+      const value = String(payload[field] || "").trim();
+      if (existing && lockedFields[field]) {
+        const savedValue = String(existing[field] || "").trim();
+        if ((field === "enquiryDate" || savedValue) && value !== savedValue) {
+          throw new Error(lockedFields[field] + " cannot be changed after it has been saved.");
+        }
+      }
+      enquiry[field] = value;
+    }
   });
   if (Object.prototype.hasOwnProperty.call(payload, "degreeCourse") && !Object.prototype.hasOwnProperty.call(payload, "educationLevel")) {
     enquiry.educationLevel = String(payload.degreeCourse || "").trim();
@@ -4207,6 +4217,11 @@ function addPayment_(payload) {
     if (recoveredPayment) {
       properties.setProperty(FINANCIAL_INDEX_DIRTY_PROPERTY_, "payment:" + idempotency.key);
       return finishPayment_(idempotency, createPaymentResponse_(paymentInfo.sheet, recoveredPayment.row, recoveredPayment.payment));
+    }
+
+    // Apply new-entry validation only after recovering previously saved payments.
+    if (paymentMode === "Cash" && !String(payload.remarks || "").trim()) {
+      throw new Error("Enter the LSA staff name who received the cash in Remarks.");
     }
 
     if (normalizeCourseCode_(courseInfo.code) === "00" && payload.programType) {

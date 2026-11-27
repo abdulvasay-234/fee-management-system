@@ -1,8 +1,12 @@
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
+  CourseLabel: ({ name }: { name: string }) => name,
+}))
 
 const modulePath = fileURLToPath(new URL('../../src/features/payments/receiptActions.ts', import.meta.url))
-const { createPaymentAcknowledgementUrl } = await import(modulePath)
+const { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } = await import(modulePath)
 
 const admission = { mobileNumber: '9876543210' }
 const payment = {
@@ -12,6 +16,76 @@ const payment = {
   paymentDate: '2026-12-20',
   balance: 3000,
 }
+
+const confirmationAdmission = {
+  mobileNumber: '9000000001', email: '', studentName: 'Test Student',
+  admissionNumber: 'TEST-ADM-001', admissionDate: '2026-11-27',
+  course: 'Data Science', batchNumber: '01', courseDuration: '3 Months',
+  startTime: '18:00', endTime: '20:00', enrollmentMonth: 'November', enrollmentYear: '2026',
+  totalCourseFee: 8000, finalFee: 8000, discountPercentage: 0, previousPaid: 0,
+}
+const confirmationPayment = {
+  ...payment, paymentId: 'TEST-PAY-001', receiptId: 'TEST-REC-001',
+  studentId: confirmationAdmission.admissionNumber, batch: '01', feeType: 'Course Fee',
+  enrollmentMonth: 'November', enrollmentYear: '2026', previousPaid: 0, totalPaid: 5000,
+  paymentMode: 'Cash', createdBy: 'Test Staff', createdAt: '2026-12-20', remarks: '',
+}
+
+describe('admission confirmation WhatsApp option', () => {
+  it('prepares the course, admission date, class times and daily 90% attendance rule', () => {
+    const url = new URL(createAdmissionConfirmationUrl(confirmationAdmission, confirmationPayment))
+    expect(url.origin + url.pathname).toBe('https://wa.me/919000000001')
+    const message = url.searchParams.get('text')
+    expect(message).toContain('Dear Test Student')
+    expect(message).toContain('Your admission to Data Science at Lords Skill Academy is confirmed.')
+    expect(message).toContain('Admission Number: TEST-ADM-001')
+    expect(message).toContain('Batch: 01')
+    expect(message).toContain('Admission Date: 27 November 2026')
+    expect(message).toContain('Class Time: 18:00 - 20:00 (IST)')
+    expect(message).toContain('Payment Received:')
+    expect(message).toContain('5,000.00')
+    expect(message).toContain('attend classes daily and maintain a minimum of 90% attendance')
+  })
+
+  it('does not prepare a confirmation with invalid contact, dates, times or a mismatched admission', () => {
+    for (const overrides of [
+      { mobileNumber: '' }, { admissionDate: '2026-02-30' }, { startTime: '' },
+      { startTime: '24:00' }, { endTime: '20:60' }, { admissionNumber: 'DIFFERENT-ADM' },
+    ]) {
+      expect(createAdmissionConfirmationUrl({ ...confirmationAdmission, ...overrides }, confirmationPayment)).toBeNull()
+    }
+  })
+
+  it.each([
+    { name: 'first payment', previousPaid: 0, startTime: '18:00', shown: true, available: true },
+    { name: 'later payment', previousPaid: 1000, startTime: '18:00', shown: false, available: false },
+    { name: 'missing class time', previousPaid: 0, startTime: '', shown: true, available: false },
+  ])('offers the confirmation only after the first successful payment ($name)', async ({ previousPaid, startTime, shown, available }) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { WorkflowContext } = await import(fileURLToPath(new URL('../../src/features/workflow/WorkflowContext.ts', import.meta.url)))
+    const { FeeReceiptWorkflow } = await import(fileURLToPath(new URL('../../src/features/payments/FeeReceiptWorkflow.tsx', import.meta.url)))
+    const snapshot = {
+      admission: { ...confirmationAdmission, startTime },
+      payment: { ...confirmationPayment, previousPaid, totalPaid: previousPaid + 5000, balance: 3000 - previousPaid },
+      setAdmission: vi.fn(), setPayment: vi.fn(), clearWorkflow: vi.fn(),
+    }
+    const html = renderToStaticMarkup(createElement(WorkflowContext, { value: snapshot },
+      createElement(MemoryRouter, { initialEntries: [{ pathname: '/fee-receipt', state: { fromAdmission: true } }] },
+        createElement(FeeReceiptWorkflow)),
+    ))
+    expect(html.includes('Send Admission Confirmation')).toBe(shown)
+    const link = html.match(/<a\b[^>]*>(?:(?!<\/a>)[\s\S])*?Send Admission Confirmation<\/a>/)?.[0]
+    expect(Boolean(link)).toBe(available)
+    expect(html).toContain('Send WhatsApp Message')
+    if (available) {
+      expect(link).toContain(createAdmissionConfirmationUrl(snapshot.admission, snapshot.payment))
+    } else if (shown) {
+      expect(html).toContain('Admission confirmation is unavailable.')
+    }
+  })
+})
 
 describe('payment acknowledgement WhatsApp link', () => {
   it('includes payment details and a date exactly 20 days later across years', () => {

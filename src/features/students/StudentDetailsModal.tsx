@@ -124,7 +124,11 @@ export function StudentDetailsModal({
             <div><span>Paid</span><strong>{currencyFormatter.format(student.totalPaid)}</strong></div>
             <div className="student-fee-summary__balance"><span>Balance</span><strong>{currencyFormatter.format(student.balance)}</strong></div>
             <div><span>Status</span><strong>{getPaymentStatus(student.totalPaid, student.balance)}</strong></div>
-            <Button onClick={() => onMakePayment(student)}>
+            <Button
+              onClick={() => onMakePayment(student)}
+              disabled={student.balance <= 0}
+              title={student.balance <= 0 ? 'No outstanding fees.' : undefined}
+            >
               <Banknote aria-hidden="true" size={16} />
               Make Payment
             </Button>
@@ -171,6 +175,10 @@ export function StudentDetailsModal({
               { label: 'Final Fee', value: currencyFormatter.format(student.finalFee) },
               { label: 'Total Paid', value: currencyFormatter.format(student.totalPaid) },
               { label: 'Balance', value: currencyFormatter.format(student.balance) },
+              {
+                label: 'Number of Instalments / Payments Done',
+                value: paymentsError ? 'Unavailable' : paymentsLoading ? 'Loading...' : String(payments.length),
+              },
             ]}
           />
 

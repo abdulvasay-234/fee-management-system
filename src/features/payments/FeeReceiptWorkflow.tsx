@@ -16,7 +16,7 @@ import { WorkflowProgress } from '../workflow/WorkflowProgress'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
 import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
-import { createPaymentAcknowledgementUrl } from './receiptActions'
+import { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } from './receiptActions'
 import { CourseLabel } from '../courseCodes/CourseLabel'
 
 interface PaymentFormData {
@@ -127,6 +127,9 @@ function PaymentForm({ admission, onRecorded }: {
   const [errors, setErrors] = useState<PaymentErrors>({})
   const [submitError, setSubmitError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [upiQrError, setUpiQrError] = useState(false)
+  const showUpiQr = formData.paymentMode === 'UPI'
+  const isCashPayment = formData.paymentMode === 'Cash'
 
   const previousPaid = admission.previousPaid
   const currentPayment = parseAmount(formData.amountPaid)
@@ -134,8 +137,9 @@ function PaymentForm({ admission, onRecorded }: {
   const balance = sumMoney([admission.finalFee, -totalPaid])
 
   function updateField(field: keyof PaymentFormData, value: string) {
+    if (field === 'paymentMode') setUpiQrError(false)
     setFormData((current) => ({ ...current, [field]: value }))
-    setErrors((current) => ({ ...current, [field]: undefined }))
+    setErrors((current) => ({ ...current, [field]: undefined, ...(field === 'paymentMode' ? { remarks: undefined } : {}) }))
   }
 
   function handleChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -157,6 +161,7 @@ function PaymentForm({ admission, onRecorded }: {
       nextErrors.amountPaid = 'Payment cannot exceed the remaining balance.'
     }
     if (!formData.paymentDate) nextErrors.paymentDate = 'Select a payment date.'
+    if (isCashPayment && !formData.remarks.trim()) nextErrors.remarks = 'Enter the LSA staff name who received the cash.'
 
     return nextErrors
   }
@@ -169,7 +174,8 @@ function PaymentForm({ admission, onRecorded }: {
 
     const firstError = Object.keys(nextErrors)[0]
     if (firstError) {
-      document.getElementById(firstError)?.focus()
+      const field = event.currentTarget.elements.namedItem(firstError)
+      if (field instanceof HTMLElement) field.focus()
       return
     }
 
@@ -215,7 +221,7 @@ function PaymentForm({ admission, onRecorded }: {
 
   return (
     <form className="payment-form" noValidate onSubmit={handleSubmit}>
-      <div className="payment-form__content">
+      <div className={`payment-form__content${showUpiQr ? ' payment-form__content--upi' : ''}`}>
         <Card className="payment-card">
           <header className="payment-card__header">
             <div className="student-summary__icon" aria-hidden="true"><Banknote size={20} /></div>
@@ -226,9 +232,43 @@ function PaymentForm({ admission, onRecorded }: {
             <Input id="paymentDate" name="paymentDate" label="Payment Date" required type="date" value={formData.paymentDate} error={errors.paymentDate} onChange={handleChange} />
             <Select id="feeType" name="feeType" label="Fee Type" options={feeTypeOptions} value={formData.feeType} onChange={handleChange} />
             <Select id="paymentMode" name="paymentMode" label="Payment Mode" options={paymentModeOptions} value={formData.paymentMode} onChange={handleChange} />
-            <Textarea containerClassName="payment-form__full" id="paymentRemarks" name="remarks" label="Remarks" rows={3} value={formData.remarks} onChange={handleChange} />
+            <Textarea
+              containerClassName="payment-form__full"
+              id="paymentRemarks"
+              name="remarks"
+              label={isCashPayment ? 'Remarks (LSA staff who received cash)' : 'Remarks'}
+              required={isCashPayment}
+              placeholder={isCashPayment ? "Enter the receiving LSA staff member's name" : undefined}
+              error={errors.remarks}
+              rows={3}
+              value={formData.remarks}
+              onChange={handleChange}
+            />
           </div>
         </Card>
+        {showUpiQr && (
+          <Card className="upi-payment-card" aria-label="UPI scan payment">
+            <header className="upi-payment-card__header">
+              <span>UPI Payment</span><h2>Scan &amp; Pay</h2>
+            </header>
+            <p className="upi-payment-card__intro">Scan this QR using your UPI app.</p>
+            {upiQrError ? (
+              <p className="receipt-actions__error" role="alert">The UPI QR could not be loaded. Reload the page or use another payment method.</p>
+            ) : (
+              <img
+                className="upi-payment-card__qr"
+                src={`${import.meta.env.BASE_URL}imgs/upi-qr.jpg`}
+                alt="UPI payment QR code"
+                onError={() => setUpiQrError(true)}
+              />
+            )}
+            <div className="upi-payment-card__amount">
+              <span>Amount to enter</span>
+              <strong>{currentPayment > 0 ? formatCurrency(currentPayment) : 'Enter the payment amount'}</strong>
+            </div>
+            <p className="upi-payment-card__warning">Verify the receiver and pay the amount shown. Save only after confirming successful payment.</p>
+          </Card>
+        )}
       </div>
 
       <section className="payment-totals" aria-label="Payment calculation">
@@ -259,6 +299,8 @@ function PaymentSuccess({
   warning?: string
 }) {
   const whatsappUrl = createPaymentAcknowledgementUrl(admission, payment)
+  const showAdmissionConfirmation = payment.previousPaid === 0
+  const admissionWhatsappUrl = showAdmissionConfirmation ? createAdmissionConfirmationUrl(admission, payment) : null
 
   return (
     <Card className="payment-success">
@@ -286,8 +328,16 @@ function PaymentSuccess({
         ) : (
           <Button variant="secondary" disabled><MessageCircle aria-hidden="true" size={16} />Send WhatsApp Message</Button>
         )}
+        {showAdmissionConfirmation && (admissionWhatsappUrl ? (
+          <a className="button button--secondary" href={admissionWhatsappUrl} target="_blank" rel="noopener noreferrer">
+            <MessageCircle aria-hidden="true" size={16} />Send Admission Confirmation
+          </a>
+        ) : (
+          <Button variant="secondary" disabled><MessageCircle aria-hidden="true" size={16} />Send Admission Confirmation</Button>
+        ))}
       </div>
       {!whatsappUrl && <p className="receipt-actions__error" role="alert">WhatsApp is unavailable. Check the student's mobile number and payment date.</p>}
+      {showAdmissionConfirmation && !admissionWhatsappUrl && <p className="receipt-actions__error" role="alert">Admission confirmation is unavailable. Check the student's mobile number, admission details and class timings.</p>}
     </Card>
   )
 }

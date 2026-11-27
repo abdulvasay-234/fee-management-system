@@ -174,21 +174,20 @@ export function StudentsDirectory() {
       <section className="student-summary-cards" aria-label="Student summary">
         <Card className="student-summary-card">
           <div className="student-summary-card__icon"><UsersRound aria-hidden="true" size={19} /></div>
-          <div><span>Total Students</span><strong>{isLoading || loadError ? '—' : summary.totalStudents}</strong><small>Unique admission IDs</small></div>
+          <div><span>Total Students</span><strong>{isLoading || loadError ? '—' : summary.totalStudents}</strong></div>
         </Card>
         <Card className="student-summary-card">
           <div className="student-summary-card__icon"><CalendarDays aria-hidden="true" size={19} /></div>
-          <div><span>Admissions Today</span><strong>{isLoading || loadError || summary.invalidDates ? '—' : summary.admissionsToday}</strong><small>By admission date</small></div>
+          <div><span>Admissions Today</span><strong>{isLoading || loadError || summary.invalidDates ? '—' : summary.admissionsToday}</strong></div>
         </Card>
         <Card className="student-summary-card">
           <div className="student-summary-card__icon"><CalendarRange aria-hidden="true" size={19} /></div>
-          <div><span>Admissions This Month</span><strong>{isLoading || loadError || summary.invalidDates ? '—' : summary.admissionsThisMonth}</strong><small>By admission date</small></div>
+          <div><span>Admissions This Month</span><strong>{isLoading || loadError || summary.invalidDates ? '—' : summary.admissionsThisMonth}</strong></div>
         </Card>
         <Card className="student-summary-card student-summary-card--courses">
           <div className="student-summary-card__icon"><BookOpenCheck aria-hidden="true" size={19} /></div>
           <div className="student-course-summary">
             <span>Admissions by Course</span>
-            <small>All admission IDs; enrollment status not tracked</small>
             {isLoading ? <small>Loading courses…</small> : loadError ? <small>Unavailable</small> : summary.courses.length ? (
               <>
                 <ul className={summary.courses.length > 4 ? 'student-course-summary__list--scrollable' : undefined} tabIndex={summary.courses.length > 4 ? 0 : undefined} aria-label="Admissions by course">
@@ -248,7 +247,7 @@ export function StudentsDirectory() {
       </Card>
 
       <div className="students-results-heading">
-        <div><h2>Registered students</h2><p>{isLoading ? 'Loading records…' : loadError ? 'Records unavailable' : `${filteredStudents.length} records shown · ${selectedCourse || 'All Courses'}${selectedCourse ? ` · ${selectedBatch ? `Batch ${selectedBatch}` : 'All Batches'}` : ''}`}</p><p>Enrollment status is not tracked.</p></div>
+        <div><h2>Registered students</h2></div>
       </div>
       {detailsError && <p className="student-course-nav__notice" role="alert">{detailsError}</p>}
       {!isLoading && !loadError && unavailableBalances > 0 && <p className="student-course-nav__notice" role="alert">Fee status unavailable for {unavailableBalances} admission{unavailableBalances === 1 ? '' : 's'} because the recorded balance is missing or invalid. Please reconcile the financial records.</p>}

@@ -81,6 +81,43 @@ export function normalizeWhatsAppNumber(value: string) {
   return digits
 }
 
+function parseIsoDate(value: string) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00Z`)
+    : null
+  return date && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null
+}
+
+export function createAdmissionConfirmationUrl(
+  admission: AdmissionSnapshot,
+  payment: PaymentRecord,
+) {
+  const phone = normalizeWhatsAppNumber(admission.mobileNumber)
+  const validTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+  if (!phone || !parseIsoDate(admission.admissionDate)
+    || !validTime.test(admission.startTime) || !validTime.test(admission.endTime)
+    || !admission.admissionNumber.trim() || admission.admissionNumber !== payment.studentId
+    || !payment.studentName.trim() || !payment.course.trim()) {
+    return null
+  }
+  const message = `Dear ${payment.studentName},
+
+Your admission to ${payment.course} at Lords Skill Academy is confirmed.
+
+Admission Number: ${payment.studentId}
+Course: ${payment.course}
+Batch: ${admission.batchNumber}
+Admission Date: ${formatReceiptDate(admission.admissionDate)}
+Class Time: ${admission.startTime} - ${admission.endTime} (IST)
+Payment Received: ${formatReceiptCurrency(payment.amountPaid)}
+
+Please attend classes daily and maintain a minimum of 90% attendance.
+
+Welcome to Lords Skill Academy!`
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
+
 export function createWhatsAppUrl(
   admission: AdmissionSnapshot,
   payment: PaymentRecord,
@@ -101,10 +138,8 @@ export function createPaymentAcknowledgementUrl(
   payment: PaymentRecord,
 ) {
   const phone = normalizeWhatsAppNumber(admission.mobileNumber)
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(payment.paymentDate)
-    ? new Date(`${payment.paymentDate}T00:00:00Z`)
-    : null
-  if (!phone || !date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== payment.paymentDate) {
+  const date = parseIsoDate(payment.paymentDate)
+  if (!phone || !date) {
     return null
   }
 

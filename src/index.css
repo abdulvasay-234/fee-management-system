@@ -1504,6 +1504,7 @@
 .enquiry-form__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--space-4);
 }
 
@@ -3201,6 +3202,7 @@ select:focus-visible {
 .admission-section__fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--space-4);
   padding: var(--space-4);
 }
@@ -3234,6 +3236,7 @@ select:focus-visible {
 .admission-form__conditional-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--space-3) var(--space-4);
 }
 
@@ -4288,7 +4291,7 @@ select:focus-visible {
 
 .upi-payment-card__qr {
   display: block;
-  width: min(100%, 224px);
+  width: min(100%, 280px);
   aspect-ratio: 1;
   margin: 0 auto;
   object-fit: contain;
