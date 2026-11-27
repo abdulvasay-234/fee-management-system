@@ -84,7 +84,7 @@ const CONFIG = {
   ],
 
   STUDENTS_INDEX_HEADERS: [
-    "Student ID", "Full Name", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Mobile Number", "Email", "Address", "City", "State", "Pincode", "Course", "Batch", "Start Time", "End Time", "Enrollment Month", "Enrollment Year", "Admission Date", "Course Duration", "Total Course Fee", "Discount", "Final Fee", "Total Paid", "Balance", "Latest Payment Date", "Latest Receipt ID", "Payment Count", "Remarks", "Created At", "Other Program Details"
+    "Student ID", "Full Name", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Mobile Number", "Email", "Address", "City", "State", "Pincode", "Course", "Batch", "Start Time", "End Time", "Enrollment Month", "Enrollment Year", "Admission Date", "Course Duration", "Total Course Fee", "Discount", "Final Fee", "Total Paid", "Balance", "Latest Payment Date", "Latest Receipt ID", "Payment Count", "Remarks", "Created At", "Other Program Details", "Parents Phone Number"
   ],
 
   VISITOR_HEADERS: [
@@ -1878,6 +1878,12 @@ function addStudent_(payload, conversion) {
         payload.mothersName || ""
       ).trim();
 
+    const parentsPhoneInput = String(payload.parentsPhoneNumber || "").trim();
+    const parentsPhoneNumber = parentsPhoneInput.replace(/\D/g, "");
+    if (parentsPhoneInput && (!/^\+?[\d\s()-]+$/.test(parentsPhoneInput) || !/^\d{10,15}$/.test(parentsPhoneNumber))) {
+      throw new Error("Enter a valid 10 to 15 digit parents phone number.");
+    }
+
     const dateOfBirth =
       String(
         payload.dateOfBirth || ""
@@ -2335,6 +2341,13 @@ function addStudent_(payload, conversion) {
       });
     }
 
+    if (!headerInfo.columns["Parents Phone Number"]) {
+      const column = headerInfo.headers.length + 1;
+      sheet.getRange(1, column).setValue("Parents Phone Number");
+      headerInfo.headers.push("Parents Phone Number");
+      headerInfo.columns["Parents Phone Number"] = column;
+    }
+
 
     // ========================================================
     // PREPARE ROW
@@ -2355,6 +2368,8 @@ function addStudent_(payload, conversion) {
 
           mothersName:
             mothersName,
+
+          parentsPhoneNumber: parentsPhoneNumber,
 
           dateOfBirth:
             dobObject,
@@ -2450,6 +2465,8 @@ function addStudent_(payload, conversion) {
       );
 
 
+    sheet.getRange(nextRow, headerInfo.columns["Parents Phone Number"]).setNumberFormat("@");
+
     sheet
       .getRange(
         nextRow,
@@ -2497,6 +2514,7 @@ function addStudent_(payload, conversion) {
         fullName: fullName,
         fatherName: fathersName,
         motherName: mothersName,
+        parentsPhoneNumber: parentsPhoneNumber,
         dateOfBirth: dateOfBirth,
         gender: gender,
         mobileNumber: mobileNumber,
@@ -3134,6 +3152,9 @@ function buildAdmissionRow_(
 
         case "Mother's Name":
           return student.mothersName;
+
+        case "Parents Phone Number":
+          return student.parentsPhoneNumber || "";
 
         case "Date of Birth":
           return student.dateOfBirth;

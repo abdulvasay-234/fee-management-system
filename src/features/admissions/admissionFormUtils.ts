@@ -9,27 +9,48 @@ export const initialAdmissionForm: AdmissionFormData = {
   address: '',
   admissionDate: '',
   batchNumber: '01',
-  city: '',
+  city: 'Hyderabad',
   collegeName: '',
   course: '',
-  courseDuration: '',
+  courseDuration: '3 Months',
   otherProgramDetails: '',
   dateOfBirth: '',
   degreeCourse: '',
   discount: '',
-  email: '',
-  endTime: '20:00',
+  email: '@gmail.com',
+  endTime: '19:00',
   fatherName: '',
   fullName: '',
   gender: '',
   mobileNumber: '',
-  motherName: '',
-  pincode: '',
+  parentsPhoneNumber: '',
+  pincode: '500028',
   remarks: '',
-  startTime: '18:00',
-  state: '',
+  specialization: '',
+  startTime: '17:30',
+  state: 'Telangana',
   totalCourseFee: '45,000',
   yearOfPassing: '',
+}
+
+export function createInitialAdmissionForm(): AdmissionFormData {
+  const now = new Date()
+  return {
+    ...initialAdmissionForm,
+    admissionDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+  }
+}
+
+export function normalizeAdmissionEmail(value: string) {
+  const email = value.trim()
+  return email === '@gmail.com' ? '' : email
+}
+
+export function getAdmissionEducationPayload(data: AdmissionFormData) {
+  return {
+    degreeCourse: [data.degreeCourse.trim(), data.specialization.trim()].filter(Boolean).join(' - '),
+    yearOfPassing: data.yearOfPassing.trim(),
+  }
 }
 
 export function calculateFinalFee(total: string, discount: string) {
@@ -88,6 +109,10 @@ export function getAdmissionNumberPreview(
 export function validateAdmissionForm(data: AdmissionFormData) {
   const errors: AdmissionFormErrors = {}
   const mobileDigits = data.mobileNumber.replace(/\D/g, '')
+  const parentsPhone = data.parentsPhoneNumber.trim()
+  if (parentsPhone && (!/^\+?[\d\s()-]+$/.test(parentsPhone) || !/^\d{10,15}$/.test(parentsPhone.replace(/\D/g, '')))) {
+    errors.parentsPhoneNumber = 'Enter a valid 10 to 15 digit parents phone number.'
+  }
 
   if (!data.fullName.trim()) errors.fullName = 'Enter the student’s full name.'
   if (!data.mobileNumber.trim()) {
@@ -95,7 +120,8 @@ export function validateAdmissionForm(data: AdmissionFormData) {
   } else if (mobileDigits.length < 10 || mobileDigits.length > 15) {
     errors.mobileNumber = 'Enter a valid 10 to 15 digit mobile number.'
   }
-  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+  const email = normalizeAdmissionEmail(data.email)
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = 'Enter a valid email address.'
   }
   if (data.dateOfBirth && data.dateOfBirth > new Date().toISOString().slice(0, 10)) {

@@ -257,6 +257,7 @@ function mapAdmissionRow_(row, columns) {
   if (finalFee === null) throw new Error('Student "' + value("Student ID") + '" has no final fee.');
   return {
     studentId: value("Student ID"), fullName: value("Full Name"), fatherName: value("Father's Name"), motherName: value("Mother's Name"),
+    parentsPhoneNumber: value("Parents Phone Number"),
     dateOfBirth: value("Date of Birth"), gender: value("Gender"), mobileNumber: value("Mobile Number"), email: value("Email"),
     address: value("Address"), city: value("City"), state: value("State"), pincode: value("Pincode"), course: value("Course"),
     batch: value("Batch"), startTime: value("Start Time"), endTime: value("End Time"), enrollmentMonth: value("Enrollment Month"),

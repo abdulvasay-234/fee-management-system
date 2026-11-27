@@ -3,15 +3,17 @@ import {
   CheckCircle2,
   FileText,
   MessageCircle,
+  RefreshCw,
+  RotateCcw,
   Search,
 } from 'lucide-react'
-import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui'
 import { formatAmountInput, parseAmount, sumMoney } from '../../utils/amount'
-import { createPayment, fetchStudents } from '../../services/api'
+import { createPayment, fetchStudent, fetchStudents } from '../../services/api'
 import type { Student } from '../students/studentTypes'
-import { toPaymentSnapshot } from '../students/studentWorkflow'
+import { toPaymentSnapshot, toStudent } from '../students/studentWorkflow'
 import { WorkflowProgress } from '../workflow/WorkflowProgress'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
@@ -19,6 +21,8 @@ import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
 import { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } from './receiptActions'
 import { CourseLabel } from '../courseCodes/CourseLabel'
 import { useSaveProtection } from '../../hooks/useSaveProtection'
+import { courseNavigation } from '../students/studentDirectoryUtils'
+import { changePaymentFilter, emptyPaymentFilters, filterStudentFees, paymentBatchOptions, type FeeStatusFilter } from './paymentDirectoryUtils'
 
 interface PaymentFormData {
   amountPaid: string
@@ -73,28 +77,60 @@ function StudentSummary({ admission }: { admission: AdmissionSnapshot }) {
 }
 
 function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => void }) {
-  const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState(emptyPaymentFilters)
   const [students, setStudents] = useState<Student[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [refreshRevision, setRefreshRevision] = useState(0)
+  const [selectedId, setSelectedId] = useState('')
+  const [selectionError, setSelectionError] = useState('')
+  const selectionVersion = useRef(0)
+  const selectionPending = useRef(false)
 
-  async function handleSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!query.trim() || isLoading) return
+  useEffect(() => () => { selectionVersion.current++ }, [])
+
+  useEffect(() => {
+    let active = true
+    void fetchStudents().then((records) => {
+      if (!active) return
+      const loadedStudents = records.map(toStudent)
+      setStudents(loadedStudents)
+      setFilters((current) => current.batch && !paymentBatchOptions(loadedStudents, [], current).includes(current.batch)
+        ? { ...current, batch: '' } : current)
+    }).catch((cause: unknown) => {
+      if (active) setError(cause instanceof Error ? cause.message : 'Unable to load students.')
+    }).finally(() => { if (active) setIsLoading(false) })
+    return () => { active = false }
+  }, [refreshRevision])
+
+  const matchingStudents = filterStudentFees(students, filters)
+  const courses = courseNavigation([], students)
+  const batches = paymentBatchOptions(students, [], filters)
+
+  function refreshStudents() {
     setIsLoading(true)
     setError('')
+    setSelectionError('')
+    setRefreshRevision((revision) => revision + 1)
+  }
+
+  async function selectStudent(studentId: string) {
+    if (selectionPending.current) return
+    selectionPending.current = true
+    const version = ++selectionVersion.current
+    setSelectedId(studentId)
+    setSelectionError('')
     try {
-      const records = await fetchStudents({ search: query })
-      setStudents(records.map((student) => ({
-        ...student,
-        discountPercentage: student.totalCourseFee ? (student.discount / student.totalCourseFee) * 100 : 0,
-        totalPaid: student.totalPaid ?? 0,
-        balance: student.balance ?? student.finalFee,
-      })))
+      const details = await fetchStudent(studentId)
+      if (details.student.studentId !== studentId) throw new Error('The API returned a different student. Refresh the list and try again.')
+      if (version === selectionVersion.current) onSelect(toStudent(details.student))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to search students.')
+      if (version === selectionVersion.current) setSelectionError(cause instanceof Error ? cause.message : 'Unable to load the selected student.')
     } finally {
-      setIsLoading(false)
+      if (version === selectionVersion.current) {
+        selectionPending.current = false
+        setSelectedId('')
+      }
     }
   }
 
@@ -102,13 +138,26 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
     <section className="student-lookup">
       <Card>
         <div className="student-lookup__header"><div className="student-summary__icon" aria-hidden="true"><Search size={20} /></div><div><h2>Find an existing student</h2><p>Search by student name, admission number, or mobile number.</p></div></div>
-        <form className="student-lookup__form" role="search" onSubmit={handleSearch}>
-          <Input id="studentSearch" label="Student name or admission number" placeholder="Search existing students" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <Button type="submit" disabled={isLoading}><Search aria-hidden="true" size={16} />{isLoading ? 'Searching...' : 'Search Students'}</Button>
-        </form>
+        <div className="student-lookup__form" role="search" aria-label="Find a student">
+          <Input id="studentSearch" label="Student name, admission number or mobile" placeholder="Start typing to find a student" value={filters.query} disabled={Boolean(selectedId)} onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))} />
+          <Button variant="secondary" disabled={isLoading || Boolean(selectedId)} onClick={refreshStudents}><RefreshCw aria-hidden="true" size={16} />Refresh Students</Button>
+          <div className="student-lookup__filters">
+            <Select id="lookupCourse" label="Course" disabled={isLoading || Boolean(selectedId)} value={filters.course} options={[{ label: 'All Courses', value: '' }, ...courses.map((course) => ({ label: course.name, value: course.name }))]} onChange={(event) => setFilters((current) => changePaymentFilter(current, 'course', event.target.value, students, []))} />
+            <Select id="lookupBatch" label="Batch" disabled={isLoading || Boolean(selectedId)} value={filters.batch} options={[{ label: 'All Batches', value: '' }, ...batches.map((batch) => ({ label: `Batch ${batch}`, value: batch }))]} onChange={(event) => setFilters((current) => ({ ...current, batch: event.target.value }))} />
+            <Select id="lookupStatus" label="Fee Status" disabled={isLoading || Boolean(selectedId)} value={filters.status} options={[{ label: 'All Fee Statuses', value: '' }, { label: 'Pending', value: 'pending' }, { label: 'Fully Paid', value: 'paid' }]} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as FeeStatusFilter }))} />
+            <Button variant="secondary" disabled={Boolean(selectedId)} onClick={() => setFilters(emptyPaymentFilters)}><RotateCcw aria-hidden="true" size={16} />Reset Filters</Button>
+          </div>
+        </div>
       </Card>
       {error && <p className="receipt-actions__error" role="alert">{error}</p>}
-      {students.map((student) => <Card className="student-lookup__result" key={student.studentId}><div><strong>{student.fullName}</strong><span>{student.studentId} · <CourseLabel name={student.course} /> · Batch {student.batch}</span></div><Button onClick={() => onSelect(student)}>Select Student</Button></Card>)}
+      {selectionError && <p className="receipt-actions__error" role="alert">{selectionError}</p>}
+      {isLoading ? <p role="status">Loading students...</p> : !error && (
+        <section className="student-lookup__results" aria-label="Matching students">
+          <div className="student-lookup__results-heading"><h2>Available students</h2><span role="status">{matchingStudents.length} matching students</span></div>
+          {!matchingStudents.length && <p>No students match your search or filters.</p>}
+          {matchingStudents.map((student) => <Card className="student-lookup__result" key={student.studentId}><div><strong>{student.fullName}</strong><span>{student.studentId} · <CourseLabel name={student.course} /> · Batch {student.batch}</span><span>{student.mobileNumber}</span></div><div className="student-lookup__result-fees"><span>{student.balance > 0 ? 'Pending Balance' : 'Fully Paid'}</span><strong>{formatCurrency(Math.max(student.balance, 0))}</strong></div><Button disabled={Boolean(selectedId)} onClick={() => void selectStudent(student.studentId)}>{selectedId === student.studentId ? 'Loading Student...' : 'Select Student'}</Button></Card>)}
+        </section>
+      )}
     </section>
   )
 }
@@ -283,7 +332,6 @@ function PaymentForm({ admission, onRecorded }: {
 
       <div className="payment-form__actions">
         <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving Payment...' : 'Save Payment'}</Button>
-        <p>Payment totals are confirmed by the LSA Admin API.</p>
       </div>
       {submitError && <p className="receipt-actions__error" role="alert">{submitError}</p>}
     </form>

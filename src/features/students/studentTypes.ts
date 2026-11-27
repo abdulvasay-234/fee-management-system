@@ -3,6 +3,7 @@ export interface Student {
   fullName: string
   fatherName: string
   motherName: string
+  parentsPhoneNumber?: string
   dateOfBirth: string
   gender: string
   mobileNumber: string

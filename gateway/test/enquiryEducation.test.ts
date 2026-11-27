@@ -1,6 +1,11 @@
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
+  CourseLabel: ({ name }: { name: string }) => name,
+  CourseDot: () => null,
+}))
+
 const { getSpecializationOptions } = await import(fileURLToPath(new URL('../../src/config/educationOptions.ts', import.meta.url)))
 const { otherOption } = await import(fileURLToPath(new URL('../../src/config/enquiryOptions.ts', import.meta.url)))
 const { encodeEnquiryPayload, getEnquiryEducationState, normalizeEnquiryRecord } = await import(
@@ -45,6 +50,52 @@ function legacyRecord(saved: typeof payload & { degreeCourse: string }) {
 }
 
 describe('Enquiry education persistence', () => {
+  it.each([
+    { educationLevel: 'B.Tech', specialization: 'CSE', yearOfGraduation: 'Currently Pursuing', custom: false, email: 'student@example.test' },
+    { educationLevel: 'BBA', specialization: 'Finance', yearOfGraduation: '2017', custom: true, email: '' },
+  ])('prefills admission education controls and preserves the saved education: $educationLevel', async (education) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { WorkflowContext } = await import(fileURLToPath(new URL('../../src/features/workflow/WorkflowContext.ts', import.meta.url)))
+    const { AdmissionForm } = await import(fileURLToPath(new URL('../../src/features/admissions/AdmissionForm.tsx', import.meta.url)))
+    const { initialAdmissionForm, getAdmissionEducationPayload } = await import(fileURLToPath(new URL('../../src/features/admissions/admissionFormUtils.ts', import.meta.url)))
+    const enquiry = normalizeEnquiryRecord(legacyRecord(encodeEnquiryPayload({ ...payload, ...education })))
+    const html = renderToStaticMarkup(createElement(WorkflowContext, {
+      value: { admission: null, payment: null, clearWorkflow: vi.fn(), setAdmission: vi.fn(), setPayment: vi.fn() },
+    }, createElement(MemoryRouter, null, createElement(AdmissionForm, { mode: 'convert', enquiry }))))
+    expect(html).toMatch(new RegExp(`id="email"[^>]*value="${education.email || '@gmail.com'}"`))
+    expect(html).toContain('Parents Name')
+    expect(html).toContain('Parents Phone Number')
+    expect(html).toMatch(/id="parentsPhoneNumber"[^>]*type="tel"/)
+    expect(html).not.toContain("Mother&#x27;s Name")
+    if (education.custom) {
+      expect(html).toMatch(/id="admission-specify-education"[^>]*value="BBA"/)
+      expect(html).toMatch(/id="admission-specify-specialization"[^>]*value="Finance"/)
+      expect(html).toMatch(/id="admission-specify-graduation"[^>]*value="2017"/)
+    } else {
+      expect(html).toContain('<option value="B.Tech" selected="">B.Tech</option>')
+      expect(html).toContain('<option value="CSE" selected="">CSE</option>')
+      expect(html).toContain('<option value="Currently Pursuing" selected="">Currently Pursuing</option>')
+    }
+    expect(getAdmissionEducationPayload({
+      ...initialAdmissionForm,
+      degreeCourse: ` ${education.educationLevel} `,
+      specialization: ` ${education.specialization} `,
+      yearOfPassing: education.yearOfGraduation,
+    })).toEqual({
+      degreeCourse: `${education.educationLevel} - ${education.specialization}`,
+      yearOfPassing: education.yearOfGraduation,
+    })
+  })
+
+  it('does not add a separator to admission education when specialization is optional and empty', async () => {
+    const { initialAdmissionForm, getAdmissionEducationPayload } = await import(fileURLToPath(new URL('../../src/features/admissions/admissionFormUtils.ts', import.meta.url)))
+    expect(getAdmissionEducationPayload({ ...initialAdmissionForm, degreeCourse: 'B.Tech' })).toEqual({
+      degreeCourse: 'B.Tech', yearOfPassing: '',
+    })
+  })
+
   it('retains all education details through a legacy save, reload and status edit', () => {
     const saved = encodeEnquiryPayload(payload)
     const reloaded = normalizeEnquiryRecord(legacyRecord(saved))

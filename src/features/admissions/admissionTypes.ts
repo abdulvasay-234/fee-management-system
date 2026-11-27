@@ -16,9 +16,10 @@ export interface AdmissionFormData {
   fullName: string
   gender: string
   mobileNumber: string
-  motherName: string
+  parentsPhoneNumber: string
   pincode: string
   remarks: string
+  specialization: string
   startTime: string
   state: string
   totalCourseFee: string

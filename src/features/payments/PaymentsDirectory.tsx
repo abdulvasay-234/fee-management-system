@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, EmptyState, Input, Select, Table } from '../../components/ui'
 import { fetchPayments, fetchStudents, type PaymentRecord as ApiPaymentRecord, type StudentRecord } from '../../services/api'
 import type { Student } from '../students/studentTypes'
-import { toPaymentSnapshot } from '../students/studentWorkflow'
+import { toPaymentSnapshot, toStudent } from '../students/studentWorkflow'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import { PaymentDetailsModal } from './PaymentDetailsModal'
@@ -67,20 +67,6 @@ function loadPaymentsData() {
     })
   }
   return paymentsLoadPromise
-}
-
-function toStudent(record: StudentRecord): Student {
-  const { finalFee, totalPaid, balance } = record
-  if (typeof finalFee !== 'number' || typeof totalPaid !== 'number' || typeof balance !== 'number'
-    || !Number.isFinite(finalFee) || !Number.isFinite(totalPaid) || !Number.isFinite(balance)) {
-    throw new Error('An admission is missing financial totals. Please reconcile the records.')
-  }
-  return {
-    ...record,
-    discountPercentage: record.totalCourseFee ? (record.discount / record.totalCourseFee) * 100 : 0,
-    totalPaid,
-    balance,
-  }
 }
 
 function CourseAmounts({ courses, metric, isLoading, loadError }: {

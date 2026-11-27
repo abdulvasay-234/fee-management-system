@@ -114,10 +114,46 @@ number under its admission lock; another staff member's save can change the
 previewed number. Each year/course/batch supports serials 01 through 99.
 Existing admission IDs are not renumbered.
 
+New admissions default to Hyderabad, Telangana, and pincode 500028; these fields
+remain editable. Email starts with editable `@gmail.com`; add a username or
+replace it with another address. An untouched suffix is saved as an empty
+optional email, and existing enquiry/visitor emails are preserved.
+Batch timing defaults to 05:30 PM to 07:00 PM for new admissions and enquiry
+conversions, and remains editable.
+Course Duration defaults to 3 Months and remains editable.
+Admission Date starts with the current local date when the form opens or is
+reset, and remains editable.
+After registration, Finish Later or closing the success dialog keeps staff on
+New Admission and resets the form for the next student. Continue to Fee Payment
+still opens the payment workflow.
+Parents Name replaces the Father's Name label and uses the existing name
+storage for compatibility. Parents Phone Number is an optional, validated
+10 to 15 digit contact stored separately as text, with formatting removed.
+The updated backend appends this column to admission sources and Students
+Index without overwriting historical mother's names. Student Records shows
+the new parent contact and retains existing mother's names when present.
+Parent phone persistence requires the updated Apps Script backend; older
+versions do not save this field.
+Education Details uses the enquiry form's education levels,
+dependent specializations, custom Other entries, and graduation years (including
+Currently Pursuing). Enquiry conversion prefills these selections. Education
+level and specialization are saved together in Degree / Course, and graduation
+year in Year of Passing; College Name remains optional.
+
 After a payment is recorded, staff can open a prefilled WhatsApp acknowledgement
 for the student's mobile number. It suggests a next payment date 20 days later
 only when a balance remains; sending the message requires confirmation in
 WhatsApp.
+
+Fee Payment loads the available students and updates matching results as staff
+type a name, admission number, mobile number, or email. Course, Batch and Fee
+Status filters combine with the search; changing course resets an incompatible
+batch. Refresh Students reloads the list, and Reset Filters clears the search
+and filters. Results show contact details and pending balances. Selecting a
+student reloads their current financial totals before opening the payment form;
+load failures are displayed instead of inventing a balance.
+New payments offer only Cash and UPI as payment modes; historical payment
+methods remain unchanged.
 
 After the first successful payment (confirmed previous paid amount of zero),
 Send Admission Confirmation opens a separate WhatsApp draft with the course,

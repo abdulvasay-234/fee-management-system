@@ -13,6 +13,9 @@ export function Sidebar({ isOpen, onNavigate }: SidebarProps) {
       aria-label="Main navigation"
     >
       <div className="brand">
+        <div className="brand__logo">
+          <img className="brand__logo-img" src={`${import.meta.env.BASE_URL}imgs/logos/LSA-Transperent-%20WHite.png`} alt="LSA" width={64} height={64} />
+        </div>
         <div className="brand__header">
           <h2 className="brand__title">LSA Connect</h2>
           <p className="brand__subtitle">Academy Management Workspace</p>

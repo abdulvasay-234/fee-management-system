@@ -9,7 +9,6 @@ import { EnquiriesPage } from './pages/EnquiriesPage'
 import { FeeReceiptPage } from './pages/FeeReceiptPage'
 import { NewAdmissionPage } from './pages/NewAdmissionPage'
 import { PaymentHistoryPage } from './pages/PaymentHistoryPage'
-import { SettingsPage } from './pages/SettingsPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { WalkInsPage } from './pages/WalkInsPage'
 
@@ -34,7 +33,6 @@ function App() {
             <Route path="walk-ins" element={<WalkInsPage />} />
             <Route path="payment-history" element={<PaymentHistoryPage />} />
             <Route path="course-codes" element={<CourseCodesPage />} />
-            <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

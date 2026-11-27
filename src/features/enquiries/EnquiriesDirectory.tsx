@@ -185,7 +185,6 @@ export function EnquiriesDirectory() {
       <header className="enquiries-header">
         <div>
           <h1 className="page__title">Enquiries</h1>
-          <p className="page__description">Keep prospective students and their next steps in one place.</p>
         </div>
         <Button onClick={() => setFormEnquiry(null)}><Plus aria-hidden="true" size={17} />New Enquiry</Button>
       </header>

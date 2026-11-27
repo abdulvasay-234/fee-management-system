@@ -20,6 +20,7 @@ type ConversionContext = vm.Context & {
   getEnquiriesSourceSheet_: () => FakeSheet
   getEnquiriesSheet_: (propertyName: string) => FakeSheet
   getStudentDetails_: (parameters: { studentId: string }) => { student: Record<string, unknown>; payments: unknown[] }
+  getStudentsIndexSheet_: () => FakeSheet
   findAdmissionSheetForCourse_: () => { sheet: FakeSheet }
   findCourseCodeByName_: (courseName: string) => { code: string; active: string }
   getCourseCodes_: () => Array<{ code: string; courseName: string; active: string }>
@@ -206,6 +207,7 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
     { code: '00', courseName: 'Other Programs', active: 'Yes' },
   ]
   context.readIndexedPayments_ = () => indexedPayments
+  const actualSynchronizeStudentIndex = context.synchronizeStudentIndex_
   context.synchronizeStudentIndex_ = (student: Record<string, unknown>) => {
     expect(locked).toBe(true)
     if (studentIndexFailures > 0) { studentIndexFailures--; throw new Error('Students Index unavailable') }
@@ -232,6 +234,12 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
   )
   return {
     admission, admissionSheet, context, convert, enquirySheet, events, originalCreatedAt, properties,
+    useRealStudentIndex() {
+      const sheet = new FakeSheet('students-index', [], events)
+      context.getStudentsIndexSheet_ = () => sheet
+      context.synchronizeStudentIndex_ = actualSynchronizeStudentIndex
+      return sheet
+    },
     get enquiryRecord() {
       return vm.runInContext(
         `findStructuredRecord_(getEnquiriesSourceSheet_(), CONFIG.ENQUIRY_HEADERS, "Enquiry ID", "${TEST_ENQUIRY_ID}", mapEnquiryRow_).record`,
@@ -251,6 +259,28 @@ function setup(status = 'New', courseInterestedIn = 'Data Science', otherProgram
 }
 
 describe('Enquiry conversion safety', () => {
+  it.each(['create', 'convert'])('persists a separate parents phone through source and real index readers: %s', (mode) => {
+    const fixture = setup()
+    const index = fixture.useRealStudentIndex()
+    const details = { ...fixture.admission, fathersName: 'Test Parent', mothersName: '', parentsPhoneNumber: '09000 000001' }
+    const result = mode === 'convert' ? fixture.convert(details) : fixture.context.addStudent_(details)
+    const studentId = 'data' in result ? result.data.studentId : result.student.studentId
+    expect(fixture.admissionSheet.rows[0][2]).toBe('Test Parent')
+    expect(fixture.admissionSheet.rows[0][3]).toBe('')
+    expect(fixture.admissionSheet.rows[0][fixture.admissionSheet.headers.indexOf('Parents Phone Number')]).toBe('09000000001')
+    expect(index.rows[0][index.headers.indexOf('Parents Phone Number')]).toBe('09000000001')
+    expect(fixture.context.getStudentDetails_({ studentId }).student).toMatchObject({
+      fatherName: 'Test Parent', motherName: '', parentsPhoneNumber: '09000000001',
+    })
+  })
+
+  it.each(['123', '9000000000abc'])('rejects invalid parent phones before writing an admission: %s', (parentsPhoneNumber) => {
+    const fixture = setup()
+    expect(() => fixture.context.addStudent_({ ...fixture.admission, parentsPhoneNumber })).toThrow('parents phone number')
+    expect(fixture.admissionSheet.rows).toHaveLength(0)
+    expect(fixture.studentIndexWrites).toBe(0)
+  })
+
   it.each([undefined, 'Synthetic Optional College'])(
     'saves optional college in source and index sheets and preserves it on a status edit (%s)',
     (college) => {
@@ -416,7 +446,7 @@ describe('Enquiry conversion safety', () => {
     expect(result.data).toEqual({ enquiryId: TEST_ENQUIRY_ID, admissionId: FIRST_TEST_STUDENT_ID, studentId: FIRST_TEST_STUDENT_ID })
     expect(fixture.admissionSheet.rows).toHaveLength(1)
     expect(fixture.admissionSheet.rows[0][23]).toBe('Existing admission remarks')
-    expect(fixture.admissionSheet.headers.slice(-2)).toEqual(['Enquiry ID', 'Conversion Fingerprint'])
+    expect(fixture.admissionSheet.headers.slice(-3)).toEqual(['Enquiry ID', 'Conversion Fingerprint', 'Parents Phone Number'])
     expect(fixture.admissionSheet.rows[0][admissionColumn.enquiryId]).toBe(TEST_ENQUIRY_ID)
     expect(fixture.admissionSheet.rows[0][admissionColumn.conversionFingerprint]).toBeTruthy()
     expect(fixture.enquirySheet.rows[0][enquiryColumn.status]).toBe('Converted')
@@ -494,7 +524,7 @@ describe('Enquiry conversion safety', () => {
     historical[22] = 44000
     fixture.admissionSheet.rows.push(historical)
     fixture.context.addStudent_(fixture.admission)
-    expect(fixture.admissionSheet.headers).toHaveLength(28)
+    expect(fixture.admissionSheet.headers).toHaveLength(29)
     expect(fixture.admissionSheet.rows[0]).toEqual(historical)
     expect(fixture.admissionSheet.rows[1][0]).toBe(SECOND_TEST_STUDENT_ID)
   })
@@ -508,7 +538,7 @@ describe('Enquiry conversion safety', () => {
     const original = [...historical]
     const converted = fixture.convert()
     expect(converted.data.studentId).toBe(SECOND_TEST_STUDENT_ID)
-    expect(fixture.admissionSheet.headers.slice(-2)).toEqual(['Enquiry ID', 'Conversion Fingerprint'])
+    expect(fixture.admissionSheet.headers.slice(-3)).toEqual(['Enquiry ID', 'Conversion Fingerprint', 'Parents Phone Number'])
     expect(fixture.admissionSheet.rows[0]).toEqual(original)
     expect(fixture.admissionSheet.rows[0][admissionColumn.otherProgramDetails]).toBeUndefined()
     expect(fixture.admissionSheet.rows[1][admissionColumn.otherProgramDetails]).toBe('')

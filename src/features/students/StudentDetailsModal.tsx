@@ -176,8 +176,9 @@ export function StudentDetailsModal({
             values={[
               { label: 'Admission Number', value: student.studentId },
               { label: 'Full Name', value: student.fullName },
-              { label: "Father's Name", value: student.fatherName },
-              { label: "Mother's Name", value: student.motherName },
+              { label: 'Parents Name', value: student.fatherName },
+              { label: 'Parents Phone Number', value: student.parentsPhoneNumber ?? '' },
+              ...(student.motherName ? [{ label: "Mother's Name", value: student.motherName }] : []),
               { label: 'Date of Birth', value: student.dateOfBirth },
               { label: 'Gender', value: student.gender },
               { label: 'Mobile Number', value: student.mobileNumber },

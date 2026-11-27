@@ -335,12 +335,17 @@ function replaceIndexRecords_(sheet, headers, records, rowBuilder) {
   }
   const existingRows = Math.max(sheet.getLastRow() - 1, 0);
   if (existingRows) sheet.getRange(2, 1, existingRows, headers.length).clearContent();
+  if (headers === CONFIG.STUDENTS_INDEX_HEADERS && records.length) {
+    sheet.getRange(2, headers.indexOf("Parents Phone Number") + 1, records.length, 1).setNumberFormat("@");
+  }
   if (records.length) sheet.getRange(2, 1, records.length, headers.length).setValues(records.map(rowBuilder));
 }
 
 function synchronizeStudentIndex_(student) {
   const sheet = getStudentsIndexSheet_();
   const columnMap = ensureIndexHeaders_(sheet, CONFIG.STUDENTS_INDEX_HEADERS);
+  const row = findIndexRow_(sheet, "Student ID", student.studentId, columnMap) || Math.max(sheet.getLastRow() + 1, 2);
+  sheet.getRange(row, columnMap["Parents Phone Number"]).setNumberFormat("@");
   upsertIndexRecord_(sheet, CONFIG.STUDENTS_INDEX_HEADERS, "Student ID", student.studentId, buildStudentIndexRow_(student), columnMap);
 }
 
@@ -422,7 +427,7 @@ function getPaymentCountForStudent_(sheet, studentId) {
 }
 
 function buildStudentIndexRow_(student) {
-  return [student.studentId, student.fullName, student.fatherName || "", student.motherName || "", student.dateOfBirth || "", student.gender || "", student.mobileNumber || "", student.email || "", student.address || "", student.city || "", student.state || "", student.pincode || "", student.course, student.batch, student.startTime || "", student.endTime || "", student.enrollmentMonth, student.enrollmentYear, formatDateValue_(student.admissionDate), student.courseDuration || "", student.totalCourseFee, student.discount, student.finalFee, student.totalPaid || 0, student.balance === undefined ? student.finalFee : student.balance, student.latestPaymentDate || "", student.latestReceiptId || "", student.paymentCount || 0, student.remarks || "", student.createdAt || new Date(), safeSheetValue_(student.otherProgramDetails || "")];
+  return [student.studentId, student.fullName, student.fatherName || "", student.motherName || "", student.dateOfBirth || "", student.gender || "", student.mobileNumber || "", student.email || "", student.address || "", student.city || "", student.state || "", student.pincode || "", student.course, student.batch, student.startTime || "", student.endTime || "", student.enrollmentMonth, student.enrollmentYear, formatDateValue_(student.admissionDate), student.courseDuration || "", student.totalCourseFee, student.discount, student.finalFee, student.totalPaid || 0, student.balance === undefined ? student.finalFee : student.balance, student.latestPaymentDate || "", student.latestReceiptId || "", student.paymentCount || 0, student.remarks || "", student.createdAt || new Date(), safeSheetValue_(student.otherProgramDetails || ""), student.parentsPhoneNumber || ""];
 }
 
 function buildPaymentIndexRow_(payment) {

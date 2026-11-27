@@ -13,7 +13,7 @@ vi.mock('../../src/features/courseCodes/courseCodeService.ts', () => ({
 
 const modulePath = fileURLToPath(new URL('../../src/features/students/studentDirectoryUtils.ts', import.meta.url))
 const { summarizeAdmissions, courseNavigation, batchNavigation, filterAdmissions, formatAdmissionFeeStatus } = await import(modulePath)
-const { getAdmissionNumberPreview } = await import(fileURLToPath(new URL('../../src/features/admissions/admissionFormUtils.ts', import.meta.url)))
+const { getAdmissionNumberPreview, initialAdmissionForm, createInitialAdmissionForm, normalizeAdmissionEmail, validateAdmissionForm } = await import(fileURLToPath(new URL('../../src/features/admissions/admissionFormUtils.ts', import.meta.url)))
 
 const students = [
   { studentId: 'A001', fullName: 'Anita Rao', mobileNumber: '9876543210', email: 'anita@example.test', course: 'Data Science', batch: '01', enrollmentYear: '2025', admissionDate: '2026-02-28' },
@@ -22,6 +22,40 @@ const students = [
 ]
 
 describe('admissions directory', () => {
+  it.each([
+    { parentsPhoneNumber: '', invalid: false },
+    { parentsPhoneNumber: '+91 90000 00001', invalid: false },
+    { parentsPhoneNumber: '12345', invalid: true },
+    { parentsPhoneNumber: '9000000000abc', invalid: true },
+  ])('validates optional parents phone numbers before submission: "$parentsPhoneNumber"', ({ parentsPhoneNumber, invalid }) => {
+    expect(Boolean(validateAdmissionForm({ ...initialAdmissionForm, parentsPhoneNumber }).parentsPhoneNumber)).toBe(invalid)
+  })
+
+  it('computes the local admission date each time a form opens or resets, including after midnight', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date(2026, 10, 27, 23, 59))
+      const firstForm = createInitialAdmissionForm()
+      expect(firstForm.admissionDate).toBe('2026-11-27')
+      vi.setSystemTime(new Date(2026, 10, 28, 0, 1))
+      expect(createInitialAdmissionForm().admissionDate).toBe('2026-11-28')
+      expect(firstForm.admissionDate).toBe('2026-11-27')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    { email: '@gmail.com', saved: '', invalid: false },
+    { email: '', saved: '', invalid: false },
+    { email: ' student@gmail.com ', saved: 'student@gmail.com', invalid: false },
+    { email: 'student@example.test', saved: 'student@example.test', invalid: false },
+    { email: 'student@', saved: 'student@', invalid: true },
+  ])('handles editable admission email defaults without saving an incomplete suffix: "$email"', ({ email, saved, invalid }) => {
+    expect(normalizeAdmissionEmail(email)).toBe(saved)
+    expect(Boolean(validateAdmissionForm({ ...initialAdmissionForm, email }).email)).toBe(invalid)
+  })
+
   it('previews the next serial after the highest matching saved admission, including gaps and reordered records', () => {
     const admissions = ['26020103', '27020188', '26020299', '26030199', '26020101', ' 26020109 ', '260201100', '260201xx']
       .map((studentId) => ({ studentId }))

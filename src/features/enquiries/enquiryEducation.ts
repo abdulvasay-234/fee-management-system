@@ -69,16 +69,24 @@ function customValue(value: string, options: readonly string[]) {
 
 export function getEnquiryEducationState(enquiry: EnquiryRecord | null, currentYear = new Date().getFullYear()) {
   const record = enquiry ? normalizeEnquiryRecord(enquiry) : null
-  const educationLevel = record?.educationLevel ?? ''
+  return getEducationState({
+    educationLevel: record?.educationLevel ?? '',
+    specialization: record?.specialization ?? '',
+    yearOfGraduation: record?.yearOfGraduation ?? '',
+  }, currentYear)
+}
+
+export function getEducationState(record: EducationDetails, currentYear = new Date().getFullYear()) {
+  const educationLevel = record.educationLevel
   const educationLevelChoice = choice(educationLevel, educationLevelOptions)
   const specializationOptions = getSpecializationOptions(educationLevelChoice || otherOption)
   const graduationOptions = [...getGraduationYearOptions(currentYear), 'Currently Pursuing', otherOption]
   return {
     educationLevelChoice,
     otherEducationLevel: customValue(educationLevel, educationLevelOptions),
-    specializationChoice: choice(record?.specialization ?? '', specializationOptions),
-    otherSpecialization: customValue(record?.specialization ?? '', specializationOptions),
-    graduationChoice: choice(record?.yearOfGraduation ?? '', graduationOptions),
-    otherGraduationYear: customValue(record?.yearOfGraduation ?? '', graduationOptions),
+    specializationChoice: choice(record.specialization, specializationOptions),
+    otherSpecialization: customValue(record.specialization, specializationOptions),
+    graduationChoice: choice(record.yearOfGraduation, graduationOptions),
+    otherGraduationYear: customValue(record.yearOfGraduation, graduationOptions),
   }
 }

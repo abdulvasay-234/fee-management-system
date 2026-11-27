@@ -32,12 +32,18 @@ import type { AdmissionSnapshot } from '../workflow/workflowTypes'
 import { getCachedCourseCodes, getCourseCodeServiceStatus, getCourseCodes } from '../courseCodes/courseCodeService'
 import type { CourseCode } from '../courseCodes/courseCodeTypes'
 import { CourseDot, CourseLabel } from '../courseCodes/CourseLabel'
-import { courseDurationOptions, genderOptions, yearOfPassingOptions } from './admissionOptions'
+import { courseDurationOptions, genderOptions } from './admissionOptions'
+import { educationLevelOptions, getGraduationYearOptions, otherOption } from '../../config/enquiryOptions'
+import { getSpecializationOptions } from '../../config/educationOptions'
+import { getEducationState } from '../enquiries/enquiryEducation'
 import {
   calculateFinalFee,
+  createInitialAdmissionForm,
   getAdmissionMetadata,
+  getAdmissionEducationPayload,
   getAdmissionNumberPreview,
   initialAdmissionForm,
+  normalizeAdmissionEmail,
   validateAdmissionForm,
 } from './admissionFormUtils'
 import { createAdmissionConfirmationData, type AdmissionConfirmationData } from './admissionConfirmation'
@@ -93,24 +99,29 @@ interface AdmissionFormProps {
 }
 
 function getInitialFormData(mode: AdmissionFormMode, enquiry?: EnquiryRecord, visitorPrefill?: Partial<AdmissionFormData>): AdmissionFormData {
-  if (mode !== 'convert' || !enquiry) return { ...initialAdmissionForm, ...visitorPrefill }
+  const initialData = createInitialAdmissionForm()
+  if (mode !== 'convert' || !enquiry) {
+    const data = { ...initialData, ...visitorPrefill }
+    return {
+      ...data,
+      admissionDate: data.admissionDate || initialData.admissionDate,
+      email: data.email.trim() ? data.email : initialAdmissionForm.email,
+    }
+  }
   return {
-    ...initialAdmissionForm,
-    admissionDate: '',
+    ...initialData,
     batchNumber: '',
     course: enquiry.courseInterestedIn,
-    courseDuration: '',
     otherProgramDetails: enquiry.otherProgramDetails ?? '',
     discount: '',
-    endTime: '',
     fullName: enquiry.fullName,
     mobileNumber: enquiry.mobileNumber,
-    email: enquiry.email,
+    email: enquiry.email.trim() ? enquiry.email : initialAdmissionForm.email,
     collegeName: enquiry.college,
-    degreeCourse: [enquiry.educationLevel || enquiry.degreeCourse || '', enquiry.specialization].filter(Boolean).join(' - '),
+    degreeCourse: enquiry.educationLevel || enquiry.degreeCourse || '',
+    specialization: enquiry.specialization,
     yearOfPassing: enquiry.yearOfGraduation,
     remarks: enquiry.notes,
-    startTime: '',
     totalCourseFee: '',
   }
 }
@@ -134,8 +145,12 @@ const fieldSections: Partial<Record<keyof AdmissionFormData, SectionId>> = {
   fullName: 'personal',
   dateOfBirth: 'personal',
   mobileNumber: 'personal',
+  parentsPhoneNumber: 'personal',
   email: 'personal',
   pincode: 'address',
+  degreeCourse: 'education',
+  specialization: 'education',
+  yearOfPassing: 'education',
   totalCourseFee: 'fees',
   discount: 'fees',
   otherProgramDetails: 'fees',
@@ -185,6 +200,14 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   const { setAdmission } = useWorkflow()
   const visitorPrefill = (location.state as { visitorPrefill?: Partial<AdmissionFormData> } | null)?.visitorPrefill
   const [formData, setFormData] = useState<AdmissionFormData>(() => getInitialFormData(mode, enquiry, visitorPrefill))
+  const [initialEducation] = useState(() => getEducationState({
+    educationLevel: formData.degreeCourse,
+    specialization: formData.specialization,
+    yearOfGraduation: formData.yearOfPassing,
+  }))
+  const [educationLevelChoice, setEducationLevelChoice] = useState(initialEducation.educationLevelChoice)
+  const [specializationChoice, setSpecializationChoice] = useState(initialEducation.specializationChoice)
+  const [graduationChoice, setGraduationChoice] = useState(initialEducation.graduationChoice)
   const [errors, setErrors] = useState<AdmissionFormErrors>({})
   const [openSections, setOpenSections] = useState(initialOpenSections)
   const [preview, setPreview] = useState<AdmissionSnapshot | null>(null)
@@ -216,6 +239,8 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     leadingAdornment: <CourseDot name={course.name} code={course.code} />,
   }))
   const courseLoadMessage = courseLoadError || (courseCodes.length > 0 && activeCourses.length === 0 ? 'No active regular courses are available.' : '')
+  const specializationValues = educationLevelChoice ? getSpecializationOptions(educationLevelChoice) : []
+  const graduationYearOptions = getGraduationYearOptions()
 
   function handleCourseSelection(value: string) {
     updateField('course', value)
@@ -275,6 +300,14 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     if (/^\d{0,2}$/.test(value)) updateField('batchNumber', value)
   }
 
+  function handleEducationLevelChange(value: string) {
+    if (submittingRef.current) return
+    setEducationLevelChoice(value)
+    setSpecializationChoice('')
+    setFormData((current) => ({ ...current, degreeCourse: value === otherOption ? '' : value, specialization: '' }))
+    setErrors((current) => ({ ...current, degreeCourse: undefined, specialization: undefined }))
+  }
+
   function handleDiscountChange(event: ChangeEvent<HTMLInputElement>) {
     const formattedValue = formatAmountInput(event.target.value)
     if (formattedValue !== null) updateField('discount', formattedValue)
@@ -316,6 +349,12 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
     event.preventDefault()
     if (submittingRef.current || conversionState === 'ambiguous' || conversionState === 'success') return
     const nextErrors = validateAdmissionForm(formData)
+    if (!formData.degreeCourse.trim()) nextErrors.degreeCourse = 'Education Level is required.'
+    if (specializationChoice === otherOption && !formData.specialization.trim()) nextErrors.specialization = 'Specify Specialization is required.'
+    const unchangedLegacyYear = mode === 'convert' && Boolean(enquiry?.yearOfGraduation) && formData.yearOfPassing === enquiry?.yearOfGraduation
+    if (graduationChoice === otherOption && !/^\d{4}$/.test(formData.yearOfPassing) && !unchangedLegacyYear) {
+      nextErrors.yearOfPassing = 'Enter a four-digit graduation year.'
+    }
     if (!activeCourses.some((course) => course.name === formData.course)) {
       nextErrors.course = courseLoadError ? 'Active courses could not be loaded. Retry when the course list is available.' : 'Choose an active course from the list.'
     }
@@ -347,17 +386,18 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       const admissionPayload: AdmissionPayload = {
         fullName: formData.fullName.trim(),
         fathersName: formData.fatherName.trim(),
-        mothersName: formData.motherName.trim(),
+        mothersName: '',
+        parentsPhoneNumber: formData.parentsPhoneNumber.replace(/\D/g, ''),
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender,
         mobileNumber: formData.mobileNumber.trim(),
-        email: formData.email.trim(),
+        email: normalizeAdmissionEmail(formData.email),
         address: formData.address.trim(),
         city: formData.city.trim(),
         collegeName: formData.collegeName.trim(),
         state: formData.state.trim(),
         pincode: formData.pincode.trim(),
-        degreeCourse: formData.degreeCourse.trim(),
+        ...getAdmissionEducationPayload(formData),
         ...(mode === 'convert' ? { otherProgramDetails: formData.otherProgramDetails.trim() } : {}),
         course: formData.course,
         batch: formData.batchNumber,
@@ -368,7 +408,6 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
         totalCourseFee,
         discount,
         remarks: mode === 'convert' ? formData.remarks : formData.remarks.trim(),
-        yearOfPassing: formData.yearOfPassing,
       }
       if (mode === 'convert') {
         if (!enquiry) throw new Error('Conversion requires a source enquiry.')
@@ -399,7 +438,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
           course: student.course,
           courseDuration: student.courseDuration,
           discountPercentage: totalCourseFee ? (discount / totalCourseFee) * 100 : 0,
-          email: formData.email,
+          email: admissionPayload.email,
           enrollmentMonth: student.enrollmentMonth,
           enrollmentYear: student.enrollmentYear,
           finalFee: student.finalFee,
@@ -443,7 +482,10 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   }
 
   function handleReset() {
-    setFormData(initialAdmissionForm)
+    setFormData(createInitialAdmissionForm())
+    setEducationLevelChoice('')
+    setSpecializationChoice('')
+    setGraduationChoice('')
     setErrors({})
     setOpenSections(initialOpenSections)
     setPreview(null)
@@ -458,8 +500,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
   }
 
   function finishLater() {
-    setPreview(null)
-    navigate('/')
+    handleReset()
   }
 
   const admissionFields = (
@@ -492,7 +533,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
             onChange={handleCourseSelection}
           />
           {courseLoadMessage && <p className="field__message field__message--error admission-form__full" role="alert">{courseLoadMessage}</p>}
-          <Input id="batchNumber" name="batchNumber" label="Batch Number" required inputMode="numeric" maxLength={2} placeholder="01" value={formData.batchNumber} error={errors.batchNumber} hint="Two-digit numeric batch code." onChange={handleBatchChange} />
+          <Input id="batchNumber" name="batchNumber" label="Batch Number" required inputMode="numeric" maxLength={2} placeholder="01" value={formData.batchNumber} error={errors.batchNumber} onChange={handleBatchChange} />
           <Input id="admissionDate" name="admissionDate" label="Admission Date" required type="date" value={formData.admissionDate} error={errors.admissionDate} onChange={handleInputChange} />
           <Input
             id="admissionNumber"
@@ -502,7 +543,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
             error={admissionNumberLoadError || admissionNumber.error}
             hint={admissionRecords === null && !admissionNumberLoadError
               ? 'Loading the next serial number...'
-              : 'YYCCBBSS: year, course code, batch, serial. Preview only; the final number is assigned when saved.'}
+              : undefined}
           />
           <dl className="admission-derived-fields">
             <div><dt>Admission Year</dt><dd>{admissionMetadata.admissionYear}</dd></div>
@@ -534,12 +575,12 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
           icon={<UserRound size={20} />}
         >
           <Input id="fullName" name="fullName" label="Full Name" required autoComplete="name" value={formData.fullName} error={errors.fullName} onChange={handleInputChange} />
-          <Input id="fatherName" name="fatherName" label="Father's Name" value={formData.fatherName} onChange={handleInputChange} />
-          <Input id="motherName" name="motherName" label="Mother's Name" value={formData.motherName} onChange={handleInputChange} />
+          <Input id="fatherName" name="fatherName" label="Parents Name" value={formData.fatherName} onChange={handleInputChange} />
+          <Input id="parentsPhoneNumber" name="parentsPhoneNumber" label="Parents Phone Number" type="tel" inputMode="tel" value={formData.parentsPhoneNumber} error={errors.parentsPhoneNumber} onChange={handleInputChange} />
           <Input id="dateOfBirth" name="dateOfBirth" label="Date of Birth" type="date" max={new Date().toISOString().slice(0, 10)} value={formData.dateOfBirth} error={errors.dateOfBirth} onChange={handleInputChange} />
           <Select id="gender" name="gender" label="Gender" options={genderOptions} value={formData.gender} onChange={handleInputChange} />
           <Input id="mobileNumber" name="mobileNumber" label="Mobile Number" required type="tel" inputMode="tel" autoComplete="tel" placeholder="10 to 15 digit number" value={formData.mobileNumber} error={errors.mobileNumber} onChange={handleInputChange} />
-          <Input id="email" name="email" label="Email" type="email" autoComplete="email" placeholder="student@example.com" value={formData.email} error={errors.email} onChange={handleInputChange} />
+          <Input id="email" name="email" label="Email" type="email" autoComplete="email" placeholder="student@gmail.com" value={formData.email} error={errors.email} onChange={handleInputChange} />
         </FormSection>
 
         <FormSection
@@ -563,12 +604,16 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
           number="05"
           onToggle={toggleSection}
           title="Education Details"
-          description="Most recent college and course information."
+          description="Education level, specialization, graduation year and college."
           icon={<GraduationCap size={20} />}
         >
-          <Select id="yearOfPassing" name="yearOfPassing" label="Year of Passing" options={yearOfPassingOptions} value={formData.yearOfPassing} onChange={handleInputChange} />
+          <Select id="degreeCourse" label="Education Level" required options={[{ label: 'Select education level', value: '' }, ...educationLevelOptions.map((value) => ({ label: value, value }))]} value={educationLevelChoice} onChange={(event) => handleEducationLevelChange(event.target.value)} error={educationLevelChoice === otherOption ? undefined : errors.degreeCourse} />
+          {educationLevelChoice === otherOption && <Input id="admission-specify-education" name="degreeCourse" label="Specify Education" required value={formData.degreeCourse} onChange={handleInputChange} error={errors.degreeCourse} />}
+          <Select id="specialization" label="Specialization" options={[{ label: educationLevelChoice ? 'Select specialization' : 'Select Education Level first', value: '' }, ...specializationValues.map((value) => ({ label: value, value }))]} value={specializationChoice} disabled={!educationLevelChoice} onChange={(event) => { if (submittingRef.current) return; setSpecializationChoice(event.target.value); updateField('specialization', event.target.value === otherOption ? '' : event.target.value) }} error={specializationChoice === otherOption ? undefined : errors.specialization} />
+          {specializationChoice === otherOption && <Input id="admission-specify-specialization" name="specialization" label="Specify Specialization" required value={formData.specialization} onChange={handleInputChange} error={errors.specialization} />}
+          <Select id="yearOfPassing" label="Year of Graduation" options={[{ label: 'Select year', value: '' }, ...graduationYearOptions.map((value) => ({ label: value, value })), { label: 'Currently Pursuing', value: 'Currently Pursuing' }, { label: otherOption, value: otherOption }]} value={graduationChoice} onChange={(event) => { if (submittingRef.current) return; setGraduationChoice(event.target.value); updateField('yearOfPassing', event.target.value === otherOption ? '' : event.target.value) }} error={graduationChoice === otherOption ? undefined : errors.yearOfPassing} />
+          {graduationChoice === otherOption && <Input id="admission-specify-graduation" label="Specify Graduation Year" inputMode="numeric" maxLength={4} required value={formData.yearOfPassing} onChange={(event) => updateField('yearOfPassing', event.target.value.replace(/\D/g, '').slice(0, 4))} error={errors.yearOfPassing} />}
           <Input id="collegeName" name="collegeName" label="College Name" value={formData.collegeName} onChange={handleInputChange} />
-          <Input id="degreeCourse" name="degreeCourse" label="Degree / Course" value={formData.degreeCourse} onChange={handleInputChange} />
         </FormSection>
 
         <FormSection
@@ -582,9 +627,9 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
         >
           <Select id="courseDuration" name="courseDuration" label="Course Duration" required options={courseDurationOptions} value={formData.courseDuration} error={errors.courseDuration} onChange={handleInputChange} />
           {formData.course.trim().toLowerCase() === 'other programs' && <Input id="otherProgramDetails" name="otherProgramDetails" label="Program / Training Interested In" required value={formData.otherProgramDetails} error={errors.otherProgramDetails} onChange={handleInputChange} />}
-          <Input id="totalCourseFee" name="totalCourseFee" label="Total Course Fee" required value={formData.totalCourseFee} inputMode="decimal" onChange={handleTotalCourseFeeChange} error={errors.totalCourseFee} hint="Enter the agreed course fee." />
-          <Input id="discount" name="discount" label="Discount" type="text" inputMode="decimal" placeholder="0" value={formData.discount} error={errors.discount} hint="Amount deducted from the total course fee." onChange={handleDiscountChange} />
-          <Input containerClassName="admission-final-fee" id="finalFee" label="Final Fee" value={finalFee} placeholder="0" readOnly hint="Total course fee minus discount." />
+          <Input id="totalCourseFee" name="totalCourseFee" label="Total Course Fee" required value={formData.totalCourseFee} inputMode="decimal" onChange={handleTotalCourseFeeChange} error={errors.totalCourseFee} />
+          <Input id="discount" name="discount" label="Discount" type="text" inputMode="decimal" placeholder="0" value={formData.discount} error={errors.discount} onChange={handleDiscountChange} />
+          <Input containerClassName="admission-final-fee" id="finalFee" label="Final Fee" value={finalFee} placeholder="0" readOnly />
         </FormSection>
 
         <FormSection
@@ -686,7 +731,7 @@ export function AdmissionForm({ mode = 'create', enquiry, onClose, onConversionO
       {admissionFields}
       <Modal
         open={Boolean(preview)}
-        onClose={() => setPreview(null)}
+        onClose={finishLater}
         title="Student registered successfully"
         description="The admission is ready to continue to its first fee payment."
         footer={

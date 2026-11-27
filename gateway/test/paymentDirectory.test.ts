@@ -8,6 +8,7 @@ const {
 } = await import(modulePath)
 const overviewPath = fileURLToPath(new URL('../../src/features/payments/paymentOverview.ts', import.meta.url))
 const { summarizePaymentOverview } = await import(overviewPath)
+const { toStudent } = await import(fileURLToPath(new URL('../../src/features/students/studentWorkflow.ts', import.meta.url)))
 
 const students = [
   { studentId: 'A001', fullName: 'Anita', mobileNumber: '9876543210', email: 'anita@example.test', course: 'Data Science', batch: '01', enrollmentYear: '2025', enrollmentMonth: 'January', finalFee: 100, totalPaid: 40, balance: 60 },
@@ -26,6 +27,19 @@ const payments = [
 const ids = (records: { studentId: string }[]) => records.map((record) => record.studentId)
 
 describe('Payments directory filters', () => {
+  it.each([undefined, NaN, Infinity])('rejects unavailable balances rather than inventing a fee-payment selection: %s', (balance) => {
+    const record = {
+      studentId: 'A001', fullName: 'Test Student', fatherName: '', motherName: '',
+      dateOfBirth: '', gender: '', mobileNumber: '9000000001', email: '', address: '',
+      city: '', state: '', pincode: '', course: 'Data Science', batch: '01', startTime: '',
+      endTime: '', enrollmentMonth: 'November', enrollmentYear: '2026', admissionDate: '2026-11-27',
+      courseDuration: '3 Months', totalCourseFee: 100, discount: 0, finalFee: 100,
+      totalPaid: 0, balance, remarks: '', createdAt: '2026-11-27',
+    }
+    expect(() => toStudent(record)).toThrow('missing financial totals')
+    expect(toStudent({ ...record, balance: 100 })).toMatchObject({ balance: 100, totalPaid: 0 })
+  })
+
   it('includes zero-payment students in pending and cleared/overpaid students in paid', () => {
     expect(ids(filterStudentFees(students, emptyPaymentFilters))).toEqual(['A001', 'A002', 'A003', 'A004'])
     expect(ids(filterStudentFees(students, { ...emptyPaymentFilters, status: 'pending' }))).toEqual(['A001', 'A003'])

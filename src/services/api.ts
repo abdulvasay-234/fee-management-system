@@ -37,6 +37,7 @@ export interface AdmissionPayload {
   fullName: string
   fathersName: string
   mothersName: string
+  parentsPhoneNumber?: string
   dateOfBirth: string
   gender: string
   mobileNumber: string
@@ -115,6 +116,7 @@ export interface StudentRecord {
   specialization?: string
   fatherName: string
   motherName: string
+  parentsPhoneNumber?: string
   dateOfBirth: string
   gender: string
   mobileNumber: string

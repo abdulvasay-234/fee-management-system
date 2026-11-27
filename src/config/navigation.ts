@@ -4,7 +4,6 @@ import {
   BookKey,
   History,
   LayoutDashboard,
-  Settings,
   Users,
   UserRoundCheck,
   type LucideIcon,
@@ -24,5 +23,4 @@ export const navigationItems: NavigationItem[] = [
   { icon: ClipboardPlus, label: 'New Admission', path: '/new-admission' },
   { icon: Banknote, label: 'Fee Payment', path: '/fee-receipt' },
   { icon: BookKey, label: 'Course Codes', path: '/course-codes' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
 ]

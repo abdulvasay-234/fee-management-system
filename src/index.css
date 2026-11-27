@@ -2729,11 +2729,11 @@ select:focus-visible {
 }
 
 .brand__logo {
-  flex: 0 0 44px;
+  flex: 0 0 64px;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: 64px;
 }
 
 .brand__logo-img {
@@ -4428,6 +4428,14 @@ select:focus-visible {
 .student-lookup__results {
   display: grid;
   gap: var(--space-2);
+}
+
+.student-lookup__filters {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: var(--space-3);
 }
 
 .student-lookup__results-heading {
@@ -6255,6 +6263,10 @@ select:focus-visible {
   }
 
   .student-lookup__form {
+    grid-template-columns: 1fr;
+  }
+
+  .student-lookup__filters {
     grid-template-columns: 1fr;
   }
 
