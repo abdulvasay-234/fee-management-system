@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Input, Select, Textarea } from '../../components/ui'
 import { createFollowUp, updateFollowUp } from '../../services/api'
 import { CourseLabel } from '../courseCodes/CourseLabel'
-import { hasPendingSave, useSaveProtection } from '../../hooks/useSaveProtection'
+import { useSaveProtection } from '../../hooks/useSaveProtection'
+import { useModalLifecycle } from '../../hooks/useModalLifecycle'
 import {
   contactMethodOptions,
   followUpStatusOptions,
@@ -51,6 +52,7 @@ export function VisitorDetailsModal({
   onMarkExit,
   visitor,
 }: VisitorDetailsModalProps) {
+  const close = useModalLifecycle(true, onClose)
   const navigate = useNavigate()
   const [followUpForm, setFollowUpForm] = useState<FollowUpFormData>(emptyFollowUp)
   const [editingFollowUp, setEditingFollowUp] = useState<FollowUpRecord | null>(null)
@@ -101,7 +103,7 @@ export function VisitorDetailsModal({
   }
 
   return (
-    <div className="visitor-detail-modal" role="presentation" onMouseDown={() => { if (!hasPendingSave()) onClose() }}>
+    <div className="visitor-detail-modal" role="presentation" onMouseDown={close}>
       <section className="visitor-detail-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="visitor-detail-title" onMouseDown={(event) => event.stopPropagation()}>
         <header className="visitor-detail-modal__header">
           <div>
@@ -109,7 +111,7 @@ export function VisitorDetailsModal({
             <h2 id="visitor-detail-title">{visitor.fullName}</h2>
             <p>{visitor.visitorId} · <CourseLabel name={visitor.courseInterestedIn} /></p>
           </div>
-          <Button variant="secondary" iconOnly aria-label="Close visitor details" onClick={onClose}><X aria-hidden="true" size={18} /></Button>
+          <Button variant="secondary" iconOnly aria-label="Close visitor details" onClick={close}><X aria-hidden="true" size={18} /></Button>
         </header>
         <div className="visitor-detail-modal__body">
           <div className="visitor-detail-modal__actions">

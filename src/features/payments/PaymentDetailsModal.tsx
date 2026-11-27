@@ -1,9 +1,9 @@
 import { Banknote, UserRound, X } from 'lucide-react'
-import { useEffect } from 'react'
 import { Button } from '../../components/ui'
 import type { Student } from '../students/studentTypes'
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import { CourseLabel } from '../courseCodes/CourseLabel'
+import { useModalLifecycle } from '../../hooks/useModalLifecycle'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -45,17 +45,10 @@ export function PaymentDetailsModal({
   payment,
   student,
 }: PaymentDetailsModalProps) {
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  const close = useModalLifecycle(true, onClose)
 
   return (
-    <div className="payment-detail-modal" role="presentation" onMouseDown={onClose}>
+    <div className="payment-detail-modal" role="presentation" onMouseDown={close}>
       <section
         className="payment-detail-modal__dialog"
         role="dialog"
@@ -69,7 +62,7 @@ export function PaymentDetailsModal({
             <h2 id="payment-detail-title">{payment.receiptId}</h2>
             <p>{payment.studentName} · {payment.paymentDate}</p>
           </div>
-          <Button variant="secondary" iconOnly aria-label="Close payment details" onClick={onClose}>
+          <Button variant="secondary" iconOnly aria-label="Close payment details" onClick={close}>
             <X aria-hidden="true" size={18} />
           </Button>
         </header>

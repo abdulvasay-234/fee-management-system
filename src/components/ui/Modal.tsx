@@ -1,7 +1,7 @@
 import { X } from 'lucide-react'
-import { useEffect, useId, type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { Button } from './Button'
-import { hasPendingSave } from '../../hooks/useSaveProtection'
+import { useModalLifecycle } from '../../hooks/useModalLifecycle'
 
 interface ModalProps {
   className?: string
@@ -24,29 +24,12 @@ export function Modal({
 }: ModalProps) {
   const titleId = useId()
   const descriptionId = useId()
-
-  useEffect(() => {
-    if (!open) return
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !hasPendingSave()) onClose()
-    }
-
-    // Lock body scroll when modal is open
-    const originalOverflow = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.documentElement.style.overflow = originalOverflow
-    }
-  }, [onClose, open])
+  const close = useModalLifecycle(open, onClose)
 
   if (!open) return null
 
   return (
-    <div className={`modal${className ? ` ${className}` : ''}`} role="presentation" onMouseDown={() => { if (!hasPendingSave()) onClose() }}>
+    <div className={`modal${className ? ` ${className}` : ''}`} role="presentation" onMouseDown={close}>
       <section
         className="modal__dialog"
         role="dialog"
@@ -68,7 +51,7 @@ export function Modal({
             variant="secondary"
             iconOnly
             aria-label="Close dialog"
-            onClick={() => { if (!hasPendingSave()) onClose() }}
+            onClick={close}
           >
             <X aria-hidden="true" size={19} />
           </Button>

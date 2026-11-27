@@ -1,5 +1,5 @@
 import { Banknote, BellRing, ChevronRight, FileBadge2, MessageCircle, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Table } from '../../components/ui'
 import { fetchStudent } from '../../services/api'
@@ -11,6 +11,7 @@ import type { Student } from './studentTypes'
 import { CourseLabel } from '../courseCodes/CourseLabel'
 import { createAdmissionConfirmationUrl, createFeeReminderUrl } from '../payments/receiptActions'
 import { toPaymentSnapshot } from './studentWorkflow'
+import { useModalLifecycle } from '../../hooks/useModalLifecycle'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -63,6 +64,7 @@ export function StudentDetailsModal({
   paymentsLoading,
   student,
 }: StudentDetailsModalProps) {
+  const close = useModalLifecycle(true, onClose)
   const navigate = useNavigate()
   const [confirmationData, setConfirmationData] = useState<AdmissionConfirmationData | null>(null)
   const [isAdmissionDocumentOpen, setIsAdmissionDocumentOpen] = useState(false)
@@ -87,18 +89,9 @@ export function StudentDetailsModal({
     }
   }
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
   return (
     <>
-    <div className="student-detail-modal" role="presentation" onMouseDown={onClose}>
+    <div className="student-detail-modal" role="presentation" onMouseDown={close}>
       <section
         className="student-detail-modal__dialog"
         role="dialog"
@@ -133,7 +126,7 @@ export function StudentDetailsModal({
                 <MessageCircle aria-hidden="true" size={18} />
               </Button>
             )}
-            <Button variant="secondary" iconOnly aria-label="Close student details" onClick={onClose}>
+            <Button variant="secondary" iconOnly aria-label="Close student details" onClick={close}>
               <X aria-hidden="true" size={18} />
             </Button>
           </div>

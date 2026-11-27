@@ -151,6 +151,12 @@ do not allow custom warning text and may suppress prompts without prior user
 interaction. The warning is removed when saving finishes. Confirmed records
 remain stored in the backend; refreshing does not erase already saved records.
 
+Dialogs share one page scroll lock and Escape listener. Closing overlapping
+dialogs in either order restores the original scrolling only after the last
+dialog closes. Form rerenders do not reacquire the lock or reorder dialogs.
+Escape closes only the most recently opened dialog, respects dropdown-handled
+Escape events, and cannot dismiss a dialog during a pending save.
+
 Payment requests require an idempotency key. On the first payment after the
 backend is deployed, each payment source sheet is extended with `Idempotency
 Key` and `Idempotency Fingerprint` columns without changing existing rows. These
