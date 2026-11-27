@@ -1,4 +1,4 @@
-import { Banknote, ChevronRight, FileBadge2, X } from 'lucide-react'
+import { Banknote, BellRing, ChevronRight, FileBadge2, MessageCircle, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Table } from '../../components/ui'
@@ -9,6 +9,8 @@ import { AdmissionConfirmationDocumentModal } from '../admissions/AdmissionConfi
 import type { PaymentRecord } from '../workflow/workflowTypes'
 import type { Student } from './studentTypes'
 import { CourseLabel } from '../courseCodes/CourseLabel'
+import { createAdmissionConfirmationUrl, createFeeReminderUrl } from '../payments/receiptActions'
+import { toPaymentSnapshot } from './studentWorkflow'
 
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -66,6 +68,10 @@ export function StudentDetailsModal({
   const [isAdmissionDocumentOpen, setIsAdmissionDocumentOpen] = useState(false)
   const [isLoadingAdmissionDocument, setIsLoadingAdmissionDocument] = useState(false)
   const [admissionDocumentError, setAdmissionDocumentError] = useState('')
+  const paymentSnapshot = toPaymentSnapshot(student)
+  const admissionWhatsappUrl = createAdmissionConfirmationUrl(paymentSnapshot)
+  const feeReminderUrl = createFeeReminderUrl(paymentSnapshot, student.balance)
+  const feesCleared = Number.isFinite(student.balance) && student.balance <= 0
 
   async function viewAdmissionDocument() {
     setIsLoadingAdmissionDocument(true)
@@ -111,6 +117,22 @@ export function StudentDetailsModal({
               <FileBadge2 aria-hidden="true" size={16} />
               {isLoadingAdmissionDocument ? 'Loading Document...' : 'View Admission Document'}
             </Button>
+            {admissionWhatsappUrl ? (
+              <a
+                className="button button--secondary button--icon"
+                href={admissionWhatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Send admission confirmation on WhatsApp"
+                title="Send admission confirmation on WhatsApp"
+              >
+                <MessageCircle aria-hidden="true" size={18} />
+              </a>
+            ) : (
+              <Button variant="secondary" iconOnly disabled aria-label="Send admission confirmation on WhatsApp" title="Admission confirmation unavailable">
+                <MessageCircle aria-hidden="true" size={18} />
+              </Button>
+            )}
             <Button variant="secondary" iconOnly aria-label="Close student details" onClick={onClose}>
               <X aria-hidden="true" size={18} />
             </Button>
@@ -119,19 +141,41 @@ export function StudentDetailsModal({
 
         <div className="student-detail-modal__body">
           {admissionDocumentError && <p className="admission-confirmation-load-error" role="alert">{admissionDocumentError}</p>}
+          {!admissionWhatsappUrl && <p className="admission-confirmation-load-error" role="alert">Admission confirmation is unavailable. Check the student's mobile number, admission date and class timings.</p>}
+          {!feeReminderUrl && !feesCleared && <p className="admission-confirmation-load-error" role="alert">Fee reminder is unavailable. Check the student's mobile number, admission details and remaining balance.</p>}
           <section className="student-fee-summary" aria-label="Fee summary">
             <div><span>Final Fee</span><strong>{currencyFormatter.format(student.finalFee)}</strong></div>
             <div><span>Paid</span><strong>{currencyFormatter.format(student.totalPaid)}</strong></div>
             <div className="student-fee-summary__balance"><span>Balance</span><strong>{currencyFormatter.format(student.balance)}</strong></div>
             <div><span>Status</span><strong>{getPaymentStatus(student.totalPaid, student.balance)}</strong></div>
-            <Button
-              onClick={() => onMakePayment(student)}
-              disabled={student.balance <= 0}
-              title={student.balance <= 0 ? 'No outstanding fees.' : undefined}
-            >
-              <Banknote aria-hidden="true" size={16} />
-              Make Payment
-            </Button>
+            <div className="student-fee-summary__actions">
+              <Button
+                onClick={() => onMakePayment(student)}
+                disabled={student.balance <= 0}
+                title={student.balance <= 0 ? 'No outstanding fees.' : undefined}
+              >
+                <Banknote aria-hidden="true" size={16} />
+                Make Payment
+              </Button>
+              {feeReminderUrl ? (
+                <a
+                  className="button button--secondary"
+                  href={feeReminderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Remind fees on WhatsApp"
+                  title="Remind fees on WhatsApp"
+                >
+                  <BellRing aria-hidden="true" size={16} />
+                  Remind Fees
+                </a>
+              ) : (
+                <Button variant="secondary" disabled aria-label="Remind fees on WhatsApp" title={feesCleared ? 'No outstanding fees.' : 'Fee reminder unavailable'}>
+                  <BellRing aria-hidden="true" size={16} />
+                  Remind Fees
+                </Button>
+              )}
+            </div>
           </section>
 
           <DetailGroup

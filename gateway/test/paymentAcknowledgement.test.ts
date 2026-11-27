@@ -6,7 +6,7 @@ vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
 }))
 
 const modulePath = fileURLToPath(new URL('../../src/features/payments/receiptActions.ts', import.meta.url))
-const { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } = await import(modulePath)
+const { createAdmissionConfirmationUrl, createFeeReminderUrl, createPaymentAcknowledgementUrl } = await import(modulePath)
 
 const admission = { mobileNumber: '9876543210' }
 const payment = {
@@ -32,6 +32,15 @@ const confirmationPayment = {
 }
 
 describe('admission confirmation WhatsApp option', () => {
+  it('creates a later admission confirmation without inventing a payment receipt', () => {
+    const message = new URL(createAdmissionConfirmationUrl(confirmationAdmission)).searchParams.get('text')
+    expect(message).toContain('Your admission to Data Science at Lords Skill Academy is confirmed.')
+    expect(message).toContain('Admission Date: 27 November 2026')
+    expect(message).toContain('Class Time: 18:00 - 20:00 (IST)')
+    expect(message).toContain('minimum of 90% attendance')
+    expect(message).not.toContain('Payment Received:')
+  })
+
   it('prepares the course, admission date, class times and daily 90% attendance rule', () => {
     const url = new URL(createAdmissionConfirmationUrl(confirmationAdmission, confirmationPayment))
     expect(url.origin + url.pathname).toBe('https://wa.me/919000000001')
@@ -83,6 +92,38 @@ describe('admission confirmation WhatsApp option', () => {
       expect(link).toContain(createAdmissionConfirmationUrl(snapshot.admission, snapshot.payment))
     } else if (shown) {
       expect(html).toContain('Admission confirmation is unavailable.')
+    }
+  })
+})
+
+describe('fee reminder WhatsApp link', () => {
+  it('requests the current remaining balance without requiring payment history or class timings', () => {
+    const url = new URL(createFeeReminderUrl({ ...confirmationAdmission, startTime: '', admissionDate: '' }, 12500.50))
+    expect(url.origin + url.pathname).toBe('https://wa.me/919000000001')
+    expect(url.searchParams.get('text')).toBe(`IMPORTANT: FEE PAYMENT REMINDER
+
+Dear Test Student,
+
+Our records show that your course fee balance remains unpaid. Please give this matter your immediate attention.
+
+Admission Number: TEST-ADM-001
+Course: Data Science
+Balance Left: ₹12,500.50
+
+Please clear the outstanding balance without further delay. If you are facing any difficulty with payment, contact the LSA office promptly.
+
+If payment has already been made, share the receipt with the LSA office for verification.
+
+Lords Skill Academy`)
+    expect(new URL(createFeeReminderUrl(confirmationAdmission, 0.01)).searchParams.get('text')).toContain('Balance Left: ₹0.01')
+  })
+
+  it('rejects cleared or invalid balances and incomplete recipient details', () => {
+    for (const balance of [0, -10, NaN, Infinity, -Infinity]) {
+      expect(createFeeReminderUrl(confirmationAdmission, balance)).toBeNull()
+    }
+    for (const overrides of [{ mobileNumber: '' }, { studentName: ' ' }, { admissionNumber: '' }, { course: ' ' }]) {
+      expect(createFeeReminderUrl({ ...confirmationAdmission, ...overrides }, 3000)).toBeNull()
     }
   })
 })

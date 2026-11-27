@@ -118,6 +118,19 @@ student to attend classes daily and maintain at least 90% attendance. Sending
 remains manual; the existing payment acknowledgement option stays available.
 Missing or invalid confirmation details disable the option with an error.
 
+Student Records also has a WhatsApp confirmation icon beside View Admission
+Document for sending the confirmation again later. It uses the saved admission
+details without needing payment history and does not claim a new payment was
+received. Missing or invalid contact/date/timing details disable the icon.
+
+The Student Records fee summary includes Remind Fees beside Make Payment. It
+opens a formal WhatsApp reminder requesting prompt clearance of the current
+saved balance, with their admission number and course. It asks students who
+have already paid to share their receipt for verification. Sending remains
+manual; no payment or
+student record is changed. Cleared fees disable the button. Invalid contact,
+admission details or balance disable it with an error.
+
 Payment requests require an idempotency key. On the first payment after the
 backend is deployed, each payment source sheet is extended with `Idempotency
 Key` and `Idempotency Fingerprint` columns without changing existing rows. These

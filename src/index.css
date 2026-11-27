@@ -5102,7 +5102,7 @@ select:focus-visible {
 
 .student-fee-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
   overflow: hidden;
   background: var(--color-surface-subtle);
@@ -5116,8 +5116,14 @@ select:focus-visible {
   border-right: 1px solid var(--color-border);
 }
 
-.student-fee-summary > .button {
-  margin: 0 var(--space-4);
+.student-fee-summary > .student-fee-summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  border-right: 0;
+  border-top: 1px solid var(--color-border);
 }
 
 .student-fee-summary span {
@@ -5906,9 +5912,8 @@ select:focus-visible {
     border-right: 0;
   }
 
-  .student-fee-summary > .button {
-    grid-column: 1 / -1;
-    margin: var(--space-3);
+  .student-fee-summary__actions > .button {
+    flex: 1 1 auto;
   }
 
   .payments-filters__search-sort,

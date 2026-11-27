@@ -90,26 +90,28 @@ function parseIsoDate(value: string) {
 
 export function createAdmissionConfirmationUrl(
   admission: AdmissionSnapshot,
-  payment: PaymentRecord,
+  payment?: PaymentRecord,
 ) {
   const phone = normalizeWhatsAppNumber(admission.mobileNumber)
+  const studentName = payment?.studentName ?? admission.studentName
+  const course = payment?.course ?? admission.course
   const validTime = /^(?:[01]\d|2[0-3]):[0-5]\d$/
   if (!phone || !parseIsoDate(admission.admissionDate)
     || !validTime.test(admission.startTime) || !validTime.test(admission.endTime)
-    || !admission.admissionNumber.trim() || admission.admissionNumber !== payment.studentId
-    || !payment.studentName.trim() || !payment.course.trim()) {
+    || !admission.admissionNumber.trim() || (payment && admission.admissionNumber !== payment.studentId)
+    || !studentName.trim() || !course.trim()) {
     return null
   }
-  const message = `Dear ${payment.studentName},
+  const paymentDetails = payment ? `\nPayment Received: ${formatReceiptCurrency(payment.amountPaid)}` : ''
+  const message = `Dear ${studentName},
 
-Your admission to ${payment.course} at Lords Skill Academy is confirmed.
+Your admission to ${course} at Lords Skill Academy is confirmed.
 
-Admission Number: ${payment.studentId}
-Course: ${payment.course}
+Admission Number: ${admission.admissionNumber}
+Course: ${course}
 Batch: ${admission.batchNumber}
 Admission Date: ${formatReceiptDate(admission.admissionDate)}
-Class Time: ${admission.startTime} - ${admission.endTime} (IST)
-Payment Received: ${formatReceiptCurrency(payment.amountPaid)}
+Class Time: ${admission.startTime} - ${admission.endTime} (IST)${paymentDetails}
 
 Please attend classes daily and maintain a minimum of 90% attendance.
 
@@ -129,6 +131,32 @@ export function createWhatsAppUrl(
     payment,
     `Dear ${payment.studentName},\n\nYour fee receipt is ready. Developed by abdulvasay.`,
   ).replace('\nRegards,', '\nThank you,')
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+}
+
+export function createFeeReminderUrl(admission: AdmissionSnapshot, balance: number) {
+  const phone = normalizeWhatsAppNumber(admission.mobileNumber)
+  if (!phone || !Number.isFinite(balance) || balance <= 0
+    || !admission.studentName.trim() || !admission.admissionNumber.trim() || !admission.course.trim()) {
+    return null
+  }
+
+  const message = `IMPORTANT: FEE PAYMENT REMINDER
+
+Dear ${admission.studentName},
+
+Our records show that your course fee balance remains unpaid. Please give this matter your immediate attention.
+
+Admission Number: ${admission.admissionNumber}
+Course: ${admission.course}
+Balance Left: ${formatReceiptCurrency(balance)}
+
+Please clear the outstanding balance without further delay. If you are facing any difficulty with payment, contact the LSA office promptly.
+
+If payment has already been made, share the receipt with the LSA office for verification.
+
+Lords Skill Academy`
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
 }

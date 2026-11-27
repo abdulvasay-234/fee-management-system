@@ -16,6 +16,38 @@ const students = [
 
 describe('admissions directory', () => {
   it.each([
+    { balance: 4250.50, mobileNumber: '9000000001', available: true, error: false },
+    { balance: 0.01, mobileNumber: '9000000001', available: true, error: false },
+    { balance: 0, mobileNumber: '9000000001', available: false, error: false },
+    { balance: -10, mobileNumber: '9000000001', available: false, error: false },
+    { balance: 4250.50, mobileNumber: '', available: false, error: true },
+    { balance: NaN, mobileNumber: '9000000001', available: false, error: true },
+  ])('offers fee reminders only for valid outstanding fees (balance $balance, contact "$mobileNumber")', async ({ balance, mobileNumber, available, error }) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { StudentDetailsModal } = await import(fileURLToPath(new URL('../../src/features/students/StudentDetailsModal.tsx', import.meta.url)))
+    const { mockStudents } = await import(fileURLToPath(new URL('../../src/features/students/mockStudentData.ts', import.meta.url)))
+    const student = { ...mockStudents[0], balance, mobileNumber, totalPaid: mockStudents[0].finalFee - balance }
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(StudentDetailsModal, {
+      student, onClose: vi.fn(), onMakePayment: vi.fn(), payments: [], paymentsError: 'Payment history unavailable.', paymentsLoading: false,
+    })))
+    const link = html.match(/<a\b[^>]*aria-label="Remind fees on WhatsApp"[^>]*>/)?.[0]
+    expect(Boolean(link)).toBe(available)
+    expect(html).toContain('Remind Fees')
+    expect(html.includes('Fee reminder is unavailable.')).toBe(error)
+    if (available) {
+      const href = link?.match(/href="([^"]+)"/)?.[1]
+      const message = new URL(href ?? '').searchParams.get('text')
+      const amount = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(balance)
+      expect(message).toContain(`Balance Left: ${amount}`)
+      expect(message).toContain(`Admission Number: ${student.studentId}`)
+    } else {
+      expect(html.match(/<button\b[^>]*aria-label="Remind fees on WhatsApp"[^>]*>/)?.[0]).toMatch(/\bdisabled=/)
+    }
+  })
+
+  it.each([
     { balance: 0, blocked: true },
     { balance: -10, blocked: true },
     { balance: 0.01, blocked: false },
@@ -42,6 +74,37 @@ describe('admissions directory', () => {
     expect(formatAdmissionFeeStatus(undefined)).toBe('Unavailable')
     expect(formatAdmissionFeeStatus(NaN)).toBe('Unavailable')
     expect(formatAdmissionFeeStatus(Infinity)).toBe('Unavailable')
+  })
+
+  it.each([
+    { name: 'payment history unavailable', mobileNumber: '9000000001', error: 'Payment history unavailable.', loading: false, available: true },
+    { name: 'payment history loading', mobileNumber: '9000000001', error: '', loading: true, available: true },
+    { name: 'missing contact details', mobileNumber: '', error: '', loading: false, available: false },
+  ])('offers a later confirmation in paid student records ($name)', async ({ mobileNumber, error, loading, available }) => {
+    const { createElement } = await import(fileURLToPath(new URL('../../node_modules/react/index.js', import.meta.url)))
+    const { renderToStaticMarkup } = await import(fileURLToPath(new URL('../../node_modules/react-dom/server.node.js', import.meta.url)))
+    const { MemoryRouter } = await import(fileURLToPath(new URL('../../node_modules/react-router-dom/dist/index.mjs', import.meta.url)))
+    const { StudentDetailsModal } = await import(fileURLToPath(new URL('../../src/features/students/StudentDetailsModal.tsx', import.meta.url)))
+    const { mockStudents } = await import(fileURLToPath(new URL('../../src/features/students/mockStudentData.ts', import.meta.url)))
+    const student = { ...mockStudents[0], mobileNumber, balance: 0, totalPaid: mockStudents[0].finalFee }
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(StudentDetailsModal, {
+      student, onClose: vi.fn(), onMakePayment: vi.fn(), payments: [], paymentsError: error, paymentsLoading: loading,
+    })))
+    const header = html.match(/<header class="student-detail-modal__header">[\s\S]*?<\/header>/)?.[0] ?? ''
+    expect(header).toContain('View Admission Document')
+    const link = header.match(/<a\b[^>]*aria-label="Send admission confirmation on WhatsApp"[^>]*>/)?.[0]
+    expect(Boolean(link)).toBe(available)
+    if (available) {
+      const href = link?.match(/href="([^"]+)"/)?.[1]
+      const message = new URL(href ?? '').searchParams.get('text')
+      expect(message).toContain(`Dear ${student.fullName}`)
+      expect(message).toContain(`Course: ${student.course}`)
+      expect(message).toContain('minimum of 90% attendance')
+      expect(message).not.toContain('Payment Received:')
+    } else {
+      expect(header.match(/<button\b[^>]*aria-label="Send admission confirmation on WhatsApp"[^>]*>/)?.[0]).toMatch(/\bdisabled=/)
+      expect(html).toContain('Admission confirmation is unavailable.')
+    }
   })
 
   it.each([
