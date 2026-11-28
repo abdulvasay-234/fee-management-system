@@ -289,6 +289,9 @@ function dispatchGatewayAction_(action, parameters, identity) {
   if (action === "enquiries") return { success: true, data: getEnquiries_() };
   if (action === "walkins") return { success: true, data: getWalkIns_(parameters) };
   if (action === "followups") return { success: true, data: getFollowUps_(parameters) };
+  if (action === "fee-reminders") return { success: true, data: getFeeReminders_() };
+  if (action === "create-fee-reminder") return { success: true, data: createFeeReminder_(parameters, identity) };
+  if (action === "update-fee-reminder") return { success: true, data: updateFeeReminder_(parameters, identity) };
   if (action === "rebuild-indexes") {
     if (!Object.prototype.hasOwnProperty.call(parameters, "confirm") || parameters.confirm !== "REBUILD_INDEXES") throw new Error("Index rebuild requires explicit confirmation.");
     return { success: true, data: rebuildIndexes_() };

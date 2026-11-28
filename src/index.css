@@ -4561,7 +4561,7 @@ select:focus-visible {
 .student-lookup__filters {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   align-items: end;
   gap: var(--space-3);
 }
@@ -4588,25 +4588,25 @@ select:focus-visible {
 
 .student-lookup__result {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto) auto;
   align-items: center;
   gap: var(--space-5);
   padding: 14px var(--space-4);
 }
 
-.student-lookup__result > div:first-child {
+.student-lookup__result-info {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
 
-.student-lookup__result > div:first-child strong {
+.student-lookup__result-info strong {
   color: var(--color-text);
   font-family: var(--font-display);
   font-size: max(12px, calc(14px * var(--ui-font-scale)));
 }
 
-.student-lookup__result > div:first-child span {
+.student-lookup__result-info span {
   overflow: hidden;
   color: var(--color-text-muted);
   font-size: max(12px, calc(11px * var(--ui-font-scale)));
@@ -4619,6 +4619,30 @@ select:focus-visible {
   display: grid;
   gap: 2px;
   min-width: 100px;
+}
+
+.fee-reminder-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.fee-reminders {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  scroll-margin-top: var(--space-4);
+}
+
+.fee-reminders .announcement-panel__header {
+  flex-wrap: wrap;
+}
+
+.student-lookup__result-fees .receipt-actions__error {
+  max-width: 240px;
+  text-transform: none;
+  overflow-wrap: anywhere;
 }
 
 .student-lookup__result-fees span {
@@ -6399,7 +6423,7 @@ select:focus-visible {
   }
 
   .student-lookup__result {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .student-lookup__result > .button {

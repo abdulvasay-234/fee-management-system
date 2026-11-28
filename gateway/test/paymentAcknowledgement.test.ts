@@ -7,6 +7,7 @@ vi.mock('../../src/features/courseCodes/CourseLabel.tsx', () => ({
 
 const modulePath = fileURLToPath(new URL('../../src/features/payments/receiptActions.ts', import.meta.url))
 const { createAdmissionConfirmationUrl, createFeeReminderUrl, createPaymentAcknowledgementUrl } = await import(modulePath)
+const { toPaymentSnapshot } = await import(fileURLToPath(new URL('../../src/features/students/studentWorkflow.ts', import.meta.url)))
 const { registerPendingSave, finishPendingSave, hasPendingSave } = await import(
   fileURLToPath(new URL('../../src/hooks/useSaveProtection.ts', import.meta.url)),
 )
@@ -81,6 +82,20 @@ const confirmationPayment = {
   enrollmentMonth: 'November', enrollmentYear: '2026', previousPaid: 0, totalPaid: 5000,
   paymentMode: 'Cash', createdBy: 'Test Staff', createdAt: '2026-12-20', remarks: '',
 }
+
+it('keeps the next fee deadline tied to the latest payment when recording a backdated receipt', () => {
+  const snapshot = toPaymentSnapshot({
+    ...confirmationAdmission, studentId: confirmationAdmission.admissionNumber,
+    fullName: confirmationAdmission.studentName, totalPaid: 5000, latestPaymentDate: '2026-12-25',
+  })
+  const message = new URL(createPaymentAcknowledgementUrl(snapshot, confirmationPayment)).searchParams.get('text')
+  expect(message).toContain('Payment Date: 20 December 2026')
+  expect(message).toContain('Next Payment Date: 14 January 2027')
+})
+
+it.each(['2026-02-30', null])('does not invent a due date from an invalid latest payment date (%s)', (latestPaymentDate) => {
+  expect(createPaymentAcknowledgementUrl({ ...confirmationAdmission, latestPaymentDate }, confirmationPayment)).toBeNull()
+})
 
 describe('admission confirmation WhatsApp option', () => {
   it('creates a later admission confirmation without inventing a payment receipt', () => {

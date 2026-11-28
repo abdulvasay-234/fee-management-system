@@ -7,18 +7,14 @@ import { fetchStudents, type StudentRecord } from '../../services/api'
 import { hasPendingSave, useIsSaving } from '../../hooks/useSaveProtection'
 import { getCourseCodes, getCourseCodeServiceStatus } from '../courseCodes/courseCodeService'
 import type { CourseCode } from '../courseCodes/courseCodeTypes'
+import { AnnouncementQueue } from './AnnouncementQueue'
 import { courseNavigation, filterAdmissions, summarizeAdmissions } from '../students/studentDirectoryUtils'
 import {
   announcementRecipients, announcementStorageKey, announcementWhatsAppUrl, changeQueue, changeRecipientStatus,
-  createAnnouncement, isPendingRecipient, normalizeAnnouncementPhone, openAnnouncementWhatsApp,
+  createAnnouncement, normalizeAnnouncementPhone, openAnnouncementWhatsApp,
   personalizeAnnouncement, readAnnouncementStore, saveAnnouncementStore, validateAnnouncementMessage,
-  type Announcement, type AnnouncementStore, type RecipientStatus,
+  type AnnouncementStore,
 } from './announcementStore'
-
-const statusLabels: Record<RecipientStatus, string> = {
-  ready: 'Ready', opened: 'WhatsApp opened', sent: 'Manually marked sent',
-  skipped: 'Skipped', invalid: 'Invalid number', failed: 'Failed to open',
-}
 
 function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : 'The announcement operation failed. Please try again.'
@@ -175,53 +171,6 @@ function Composer({ students, courses, duplicate, onCreate, onCancel }: {
   )
 }
 
-function Queue({ store, announcement, onChange, onOpen, onStart }: {
-  store: AnnouncementStore
-  announcement: Announcement
-  onChange: (transform: (current: AnnouncementStore) => AnnouncementStore) => void
-  onOpen: () => void
-  onStart: () => void
-}) {
-  const recipients = announcementRecipients(store, announcement.id)
-  const current = recipients.find((recipient) => recipient.id === announcement.currentRecipientId)
-  const active = announcement.status === 'active'
-  const counts = (status: RecipientStatus) => recipients.filter((recipient) => recipient.status === status).length
-  const pending = recipients.filter(isPendingRecipient).length
-  return (
-    <Card className="announcement-panel">
-      <header className="announcement-panel__header"><h2>{announcement.title}</h2><Badge variant="navy">{announcement.status}</Badge></header>
-      <p>{recipients.length} recipients · {recipients.filter((recipient) => recipient.phone).length} valid · {counts('invalid')} invalid · {pending} pending</p>
-      <p>{counts('ready')} ready · {counts('opened')} WhatsApp opened · {counts('sent')} manually marked sent · {counts('skipped')} skipped · {counts('failed')} failed to open</p>
-      <p className="announcement-manual-warning">Opening WhatsApp does not send a message. Send it manually, then mark it sent here. Next, resume and choosing a recipient never open chats automatically.</p>
-      <div className="announcement-actions">
-        {announcement.status !== 'completed' && <>
-          {active ?
-          <Button variant="secondary" onClick={() => onChange((state) => changeQueue(state, announcement.id, 'pause'))}>Pause Queue</Button>
-          : announcement.status === 'paused' && recipients.every((recipient) => recipient.status === 'ready' || recipient.status === 'invalid')
-          ? <Button onClick={onStart}>Start Queue &amp; Open WhatsApp</Button>
-          : <Button onClick={() => onChange((state) => changeQueue(state, announcement.id, 'resume'))}>Resume Queue</Button>}
-          {announcement.status !== 'stopped' && <Button variant="secondary" onClick={() => onChange((state) => changeQueue(state, announcement.id, 'stop'))}>Stop Queue</Button>}
-        </>}
-      </div>
-      {current ? <>
-        <h3>Current recipient: {current.name}</h3>
-        <p>{current.studentId} · {current.mobileNumber} · {current.course} / Batch {current.batch} · {statusLabels[current.status]}</p>
-        <pre className="announcement-message" aria-label="Current recipient message">{personalizeAnnouncement(announcement.template, current)}</pre>
-        <div className="announcement-actions">
-          <Button disabled={!active} onClick={onOpen}>{current.status === 'failed' ? 'Retry WhatsApp' : current.status === 'opened' ? 'Reopen WhatsApp' : 'Open WhatsApp'}</Button>
-          <Button disabled={!active || current.status !== 'opened'} onClick={() => onChange((state) => changeRecipientStatus(state, announcement.id, current.id, 'sent'))}>Mark as Sent &amp; Next</Button>
-          <Button variant="secondary" disabled={!active} onClick={() => onChange((state) => changeRecipientStatus(state, announcement.id, current.id, 'skipped'))}>Skip &amp; Next</Button>
-          <Button variant="secondary" disabled={pending < 2} onClick={() => onChange((state) => changeQueue(state, announcement.id, 'next'))}>Next Recipient</Button>
-        </div>
-      </> : <p role="status">Queue complete. Marked sent is your manual confirmation, not a delivery receipt.</p>}
-      <details><summary>Original message template</summary><pre className="announcement-message">{announcement.template}</pre></details>
-      <Table><thead><tr><th>Student</th><th>Student ID</th><th>Mobile</th><th>Course</th><th>Batch</th><th>Status</th><th>Action</th></tr></thead><tbody>{recipients.map((recipient) => <tr key={recipient.id}>
-        <td>{recipient.name}</td><td>{recipient.studentId}</td><td>{recipient.mobileNumber || 'Missing'}</td><td>{recipient.course}</td><td>{recipient.batch}</td><td>{statusLabels[recipient.status]}</td><td>{isPendingRecipient(recipient) && <Button variant="secondary" disabled={recipient.id === current?.id} onClick={() => onChange((state) => changeQueue(state, announcement.id, 'next', recipient.id))}>Choose</Button>}</td>
-      </tr>)}</tbody></Table>
-    </Card>
-  )
-}
-
 function AnnouncementsModule({ user }: { user: AuthUser }) {
   const key = announcementStorageKey(user.googleSub || user.email)
   const saving = useIsSaving()
@@ -336,7 +285,10 @@ function AnnouncementsModule({ user }: { user: AuthUser }) {
               if (persist(next)) { setComposer(null); setSelectedAnnouncementId(id) }
             } catch (cause) { setOperationError(errorMessage(cause)) }
           }} />}
-          {!composer && selectedAnnouncement && <Queue store={store} announcement={selectedAnnouncement} onChange={update} onOpen={openCurrent} onStart={() => {
+          {!composer && selectedAnnouncement && <AnnouncementQueue announcement={selectedAnnouncement} recipients={announcementRecipients(store, selectedAnnouncement.id)}
+            onQueueAction={(action, recipientId) => update((current) => changeQueue(current, selectedAnnouncement.id, action, recipientId))}
+            onRecipientAction={(recipientId, status) => update((current) => changeRecipientStatus(current, selectedAnnouncement.id, recipientId, status))}
+            onOpen={openCurrent} onStart={() => {
             const current = storeRef.current
             if (!current) return
             try {

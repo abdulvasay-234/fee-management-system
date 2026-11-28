@@ -30,6 +30,7 @@ export function toPaymentSnapshot(student: Student): AdmissionSnapshot {
     finalFee: student.finalFee,
     mobileNumber: student.mobileNumber,
     previousPaid: student.totalPaid,
+    latestPaymentDate: student.latestPaymentDate,
     startTime: student.startTime,
     endTime: student.endTime,
     studentName: student.fullName,

@@ -182,7 +182,7 @@ function isRecipient(value: unknown): value is AnnouncementRecipient {
     && typeof value.status === 'string' && recipientStatuses.includes(value.status)
 }
 
-function decodeStore(raw: string | null): AnnouncementStore {
+export function validateAnnouncementStore(raw: string | null): AnnouncementStore {
   if (raw === null) return emptyAnnouncementStore()
   let value: unknown
   try { value = JSON.parse(raw) } catch (cause) { throw new Error('Announcement history contains unreadable data. Do not overwrite it.', { cause }) }
@@ -209,28 +209,33 @@ function decodeStore(raw: string | null): AnnouncementStore {
 }
 
 export function readAnnouncementStore(storage: Pick<Storage, 'getItem'>, key: string): AnnouncementStore {
-  const store = decodeStore(storage.getItem(key))
+  const store = validateAnnouncementStore(storage.getItem(key))
   return { ...store, announcements: store.announcements.map((item) => item.status === 'active' ? { ...item, status: 'paused' } : item) }
 }
 
 export function saveAnnouncementStore(storage: Pick<Storage, 'getItem' | 'setItem'>, key: string, store: AnnouncementStore): AnnouncementStore {
-  const current = decodeStore(storage.getItem(key))
+  const current = validateAnnouncementStore(storage.getItem(key))
   if (current.revision !== store.revision) throw new Error('Announcement history changed in another tab. Reload history before continuing.')
   const next = { ...store, revision: store.revision + 1 }
-  decodeStore(JSON.stringify(next))
+  validateAnnouncementStore(JSON.stringify(next))
   storage.setItem(key, JSON.stringify(next))
   return next
 }
 
 let whatsappWindow: Window | null = null
 
-export function openAnnouncementWhatsApp(url: string) {
-  if (!url.startsWith('https://wa.me/')) throw new Error('Invalid WhatsApp chat URL.')
+export function prepareAnnouncementWhatsApp() {
   if (!whatsappWindow || whatsappWindow.closed) {
     whatsappWindow = window.open('about:blank', '_blank')
     if (!whatsappWindow) throw new Error('WhatsApp could not open. Allow pop-ups for LSA Connect, then retry.')
     whatsappWindow.opener = null
   }
-  whatsappWindow.location.href = url
-  whatsappWindow.focus()
+  return whatsappWindow
+}
+
+export function openAnnouncementWhatsApp(url: string) {
+  if (!url.startsWith('https://wa.me/')) throw new Error('Invalid WhatsApp chat URL.')
+  const chat = prepareAnnouncementWhatsApp()
+  chat.location.href = url
+  chat.focus()
 }

@@ -88,6 +88,19 @@ function parseIsoDate(value: string) {
   return date && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null
 }
 
+export function nextPaymentDueDate(value: string, days = 20) {
+  const date = parseIsoDate(value)
+  if (!date) return null
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.getUTCFullYear() <= 9999 ? date.toISOString().slice(0, 10) : null
+}
+
+export function latestPaymentDueDate(paymentDate: string, previousPaymentDate?: string) {
+  if (!parseIsoDate(paymentDate)
+    || (previousPaymentDate !== undefined && previousPaymentDate !== '' && !parseIsoDate(previousPaymentDate))) return null
+  return nextPaymentDueDate(previousPaymentDate && previousPaymentDate > paymentDate ? previousPaymentDate : paymentDate)
+}
+
 export function createAdmissionConfirmationUrl(
   admission: AdmissionSnapshot,
   payment?: PaymentRecord,
@@ -173,9 +186,9 @@ export function createPaymentAcknowledgementUrl(
 
   let nextPayment = 'No further payment is due.'
   if (payment.balance > 0) {
-    date.setUTCDate(date.getUTCDate() + 20)
-    if (date.getUTCFullYear() > 9999) return null
-    nextPayment = `Next Payment Date: ${formatReceiptDate(date.toISOString().slice(0, 10))}`
+    const dueDate = latestPaymentDueDate(payment.paymentDate, admission.latestPaymentDate)
+    if (!dueDate) return null
+    nextPayment = `Next Payment Date: ${formatReceiptDate(dueDate)}`
   }
   const message = `LSA - ${payment.course} - Payment Acknowledgement - ${payment.studentName}
 

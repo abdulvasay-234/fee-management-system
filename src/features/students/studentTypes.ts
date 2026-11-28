@@ -25,6 +25,8 @@ export interface Student {
   finalFee: number
   totalPaid: number
   balance: number
+  latestPaymentDate?: string
+  paymentCount?: number
   remarks: string
   otherProgramDetails?: string
   createdAt: string

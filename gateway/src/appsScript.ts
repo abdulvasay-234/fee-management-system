@@ -8,6 +8,7 @@ const GET_ACTIONS = new Set([
   'dashboard',
   'walkins',
   'followups',
+  'fee-reminders',
 ])
 
 const POST_ACTIONS = new Set([
@@ -22,6 +23,8 @@ const POST_ACTIONS = new Set([
   'add-followup',
   'update-followup',
   'rebuild-indexes',
+  'create-fee-reminder',
+  'update-fee-reminder',
 ])
 
 const SENSITIVE_RESPONSE_KEYS = new Set([

@@ -49,6 +49,24 @@ function authenticatedGet(app: ReturnType<typeof createApp>, path = '/api?action
 }
 
 describe('gateway security', () => {
+  it.each(['fee-reminders', 'create-fee-reminder', 'update-fee-reminder'])('forwards %s only with authenticated administrator identity', async (action) => {
+    const { app, proxy } = appWith()
+    const read = action === 'fee-reminders'
+    const response = read ? await authenticatedGet(app, `/api?action=${action}`)
+      : await request(app).post('/api').set('Authorization', 'Bearer valid-token').set('Origin', config.allowedOrigin)
+        .send({ action, id: 'reminder-test-001' })
+    expect(response.status).toBe(200)
+    expect(proxy.forward).toHaveBeenCalledWith(
+      { action, method: read ? 'GET' : 'POST', parameters: read ? {} : { id: 'reminder-test-001' } },
+      expect.objectContaining({ email: 'approved@gmail.com', googleSub: validClaims.sub }),
+    )
+    proxy.forward.mockClear()
+    const denied = read ? await request(app).get(`/api?action=${action}`)
+      : await request(app).post('/api').send({ action, id: 'reminder-test-001' })
+    expect(denied.status).toBe(401)
+    expect(proxy.forward).not.toHaveBeenCalled()
+  })
+
   it('exposes only a minimal public health response', async () => {
     const { app } = appWith()
     const response = await request(app).get('/health')

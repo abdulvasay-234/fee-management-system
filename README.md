@@ -111,6 +111,48 @@ npm test --prefix gateway -- test/announcements.test.ts
 
 ## Financial records
 
+### Fee Payment tracking and reminders
+
+The Fee Payment student lookup combines course, batch, search and pending/fully
+paid filters with Due Now, Overdue, Upcoming Payment, Never Paid and Partially
+Paid filters. Fully paid includes balances of zero or less. Last payment dates
+come from the API's reconciled receipt history, not receipt creation order.
+While a balance remains, the next payment is due exactly 20 calendar days after
+the latest payment date. Before any payment, fees are due from admission day.
+Recording a backdated receipt does not move the next deadline earlier than
+20 days after the latest payment; the acknowledgement and payment screen agree.
+Invalid or missing dates are flagged and cannot be selected for reminders.
+
+Select individual pending students or all matching pending students, review the
+personalized balance/due-date message, then save a reminder queue. Invalid
+mobiles are recorded but excluded from the queue. Opening WhatsApp requires an
+explicit click; Send must be pressed manually in WhatsApp. Mark as Sent & Next,
+skip, pause, stop and resume track progress but do not verify delivery or
+automatically send/open the next chat.
+
+Unlike general Announcements, fee reminder history is shared through Google
+Sheets. A `Fee Reminders` tab is created inside the existing Students Index
+workbook when the first queue is saved; no admission/payment rows are created
+or changed by reminder tracking. Recipient snapshots and append-only tracking
+events occupy separate rows, avoiding the Sheets per-cell limit for large
+selections. Administrator identity is supplied by the authenticated gateway.
+Optimistic revisions prevent another administrator's progress being overwritten.
+Stable request IDs recover lost create/update responses without duplicate
+queues or tracking events. Failed/uncertain writes lock further actions until
+the original request is retried or history refreshed. Recovery does not open
+WhatsApp. Before opening a saved reminder, the backend rechecks current fees,
+due date and student contact details; changed or cleared fees require skipping
+that snapshot and selecting current records.
+
+Deploy `FeeReminders.js` together with the updated Apps Script dispatcher and
+both gateway action allowlists. Existing Apps Script diagnostic files and
+deployment URLs must be preserved. The shared history is not available until
+the Apps Script backend and the active gateway have been updated.
+
+```bash
+npm test --prefix gateway -- test/feeReminders.test.ts test/announcements.test.ts test/paymentAcknowledgement.test.ts
+```
+
 The admission stores the agreed course fee and discount; the final fee is the
 student's fee obligation. Student balances and dashboard outstanding amounts are
 derived from indexed payment transaction amounts, not the running totals

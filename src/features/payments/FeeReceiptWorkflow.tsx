@@ -7,7 +7,7 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, Input, Select, Textarea } from '../../components/ui'
 import { formatAmountInput, parseAmount, sumMoney } from '../../utils/amount'
@@ -18,11 +18,14 @@ import { WorkflowProgress } from '../workflow/WorkflowProgress'
 import { useWorkflow } from '../workflow/useWorkflow'
 import type { AdmissionSnapshot, PaymentRecord } from '../workflow/workflowTypes'
 import { feeTypeOptions, paymentModeOptions } from './paymentOptions'
-import { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl } from './receiptActions'
+import { createAdmissionConfirmationUrl, createPaymentAcknowledgementUrl, formatReceiptDate, latestPaymentDueDate } from './receiptActions'
 import { CourseLabel } from '../courseCodes/CourseLabel'
-import { useSaveProtection } from '../../hooks/useSaveProtection'
+import { useIsSaving, useSaveProtection } from '../../hooks/useSaveProtection'
 import { courseNavigation } from '../students/studentDirectoryUtils'
 import { changePaymentFilter, emptyPaymentFilters, filterStudentFees, paymentBatchOptions, type FeeStatusFilter } from './paymentDirectoryUtils'
+import { feeToday, filterFeeSchedule, studentFeeSchedule, type FeeDueFilter } from './feeReminders'
+
+const SharedFeeReminders = lazy(() => import('./SharedFeeReminders').then((module) => ({ default: module.SharedFeeReminders })))
 
 interface PaymentFormData {
   amountPaid: string
@@ -83,6 +86,11 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
   const [error, setError] = useState('')
   const [refreshRevision, setRefreshRevision] = useState(0)
   const [selectedId, setSelectedId] = useState('')
+  const [dueFilter, setDueFilter] = useState<FeeDueFilter>('')
+  const [reminderIds, setReminderIds] = useState(new Set<string>())
+  const [remindersLocked, setRemindersLocked] = useState(false)
+  const saving = useIsSaving()
+  const reminderPanel = useRef<HTMLDivElement>(null)
   const [selectionError, setSelectionError] = useState('')
   const selectionVersion = useRef(0)
   const selectionPending = useRef(false)
@@ -103,14 +111,27 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
     return () => { active = false }
   }, [refreshRevision])
 
-  const matchingStudents = filterStudentFees(students, filters)
+  const today = feeToday()
+  const matchingStudents = filterFeeSchedule(filterStudentFees(students, filters), dueFilter, today)
   const courses = courseNavigation([], students)
   const batches = paymentBatchOptions(students, [], filters)
+  const disabled = Boolean(selectedId) || saving || remindersLocked
+  const remindable = matchingStudents.filter((student) => student.balance > 0 && studentFeeSchedule(student, today).dueDate)
+  const allSelected = remindable.length > 0 && remindable.every((student) => reminderIds.has(student.studentId))
+  const pendingStudents = students.filter((student) => student.balance > 0)
+  const dueNow = filterFeeSchedule(pendingStudents, 'due', today)
+  const unavailableDates = pendingStudents.filter((student) => studentFeeSchedule(student, today).error).length
+
+  function changeFilters(next: typeof filters) {
+    setFilters(next)
+    setReminderIds(new Set())
+  }
 
   function refreshStudents() {
     setIsLoading(true)
     setError('')
     setSelectionError('')
+    setReminderIds(new Set())
     setRefreshRevision((revision) => revision + 1)
   }
 
@@ -139,13 +160,14 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
       <Card>
         <div className="student-lookup__header"><div className="student-summary__icon" aria-hidden="true"><Search size={20} /></div><div><h2>Find an existing student</h2><p>Search by student name, admission number, or mobile number.</p></div></div>
         <div className="student-lookup__form" role="search" aria-label="Find a student">
-          <Input id="studentSearch" label="Student name, admission number or mobile" placeholder="Start typing to find a student" value={filters.query} disabled={Boolean(selectedId)} onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))} />
-          <Button variant="secondary" disabled={isLoading || Boolean(selectedId)} onClick={refreshStudents}><RefreshCw aria-hidden="true" size={16} />Refresh Students</Button>
+          <Input id="studentSearch" label="Student name, admission number or mobile" placeholder="Start typing to find a student" value={filters.query} disabled={disabled} onChange={(event) => changeFilters({ ...filters, query: event.target.value })} />
+          <Button variant="secondary" disabled={isLoading || disabled} onClick={refreshStudents}><RefreshCw aria-hidden="true" size={16} />Refresh Students</Button>
           <div className="student-lookup__filters">
-            <Select id="lookupCourse" label="Course" disabled={isLoading || Boolean(selectedId)} value={filters.course} options={[{ label: 'All Courses', value: '' }, ...courses.map((course) => ({ label: course.name, value: course.name }))]} onChange={(event) => setFilters((current) => changePaymentFilter(current, 'course', event.target.value, students, []))} />
-            <Select id="lookupBatch" label="Batch" disabled={isLoading || Boolean(selectedId)} value={filters.batch} options={[{ label: 'All Batches', value: '' }, ...batches.map((batch) => ({ label: `Batch ${batch}`, value: batch }))]} onChange={(event) => setFilters((current) => ({ ...current, batch: event.target.value }))} />
-            <Select id="lookupStatus" label="Fee Status" disabled={isLoading || Boolean(selectedId)} value={filters.status} options={[{ label: 'All Fee Statuses', value: '' }, { label: 'Pending', value: 'pending' }, { label: 'Fully Paid', value: 'paid' }]} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as FeeStatusFilter }))} />
-            <Button variant="secondary" disabled={Boolean(selectedId)} onClick={() => setFilters(emptyPaymentFilters)}><RotateCcw aria-hidden="true" size={16} />Reset Filters</Button>
+            <Select id="lookupCourse" label="Course" disabled={isLoading || disabled} value={filters.course} options={[{ label: 'All Courses', value: '' }, ...courses.map((course) => ({ label: course.name, value: course.name }))]} onChange={(event) => changeFilters(changePaymentFilter(filters, 'course', event.target.value, students, []))} />
+            <Select id="lookupBatch" label="Batch" disabled={isLoading || disabled} value={filters.batch} options={[{ label: 'All Batches', value: '' }, ...batches.map((batch) => ({ label: `Batch ${batch}`, value: batch }))]} onChange={(event) => changeFilters({ ...filters, batch: event.target.value })} />
+            <Select id="lookupStatus" label="Fee Status" disabled={isLoading || disabled} value={filters.status} options={[{ label: 'All Fee Statuses', value: '' }, { label: 'Pending Balance', value: 'pending' }, { label: 'Fully Paid', value: 'paid' }]} onChange={(event) => { changeFilters({ ...filters, status: event.target.value as FeeStatusFilter }); if (event.target.value === 'paid') setDueFilter('') }} />
+            <Select id="lookupDue" label="Payment Due" disabled={isLoading || disabled || filters.status === 'paid'} value={dueFilter} options={[{ label: 'All Due Dates', value: '' }, { label: 'Due Now', value: 'due' }, { label: 'Overdue', value: 'overdue' }, { label: 'Upcoming', value: 'upcoming' }, { label: 'Never Paid', value: 'never-paid' }, { label: 'Partially Paid', value: 'partial' }]} onChange={(event) => { setDueFilter(event.target.value as FeeDueFilter); setReminderIds(new Set()) }} />
+            <Button variant="secondary" disabled={disabled} onClick={() => { changeFilters(emptyPaymentFilters); setDueFilter('') }}><RotateCcw aria-hidden="true" size={16} />Reset Filters</Button>
           </div>
         </div>
       </Card>
@@ -153,11 +175,37 @@ function DirectStudentLookup({ onSelect }: { onSelect: (student: Student) => voi
       {selectionError && <p className="receipt-actions__error" role="alert">{selectionError}</p>}
       {isLoading ? <p role="status">Loading students...</p> : !error && (
         <section className="student-lookup__results" aria-label="Matching students">
+          <div className="announcement-overview">
+            <Card><span>Pending Fees</span><strong>{pendingStudents.length}</strong></Card>
+            <Card><span>Due Now</span><strong>{dueNow.length}</strong></Card>
+            <Card><span>Fully Paid</span><strong>{students.length - pendingStudents.length}</strong></Card>
+            <Card><span>Never Paid</span><strong>{filterFeeSchedule(students, 'never-paid', today).length}</strong></Card>
+          </div>
+          <p>Next payment is due 20 days after the latest payment. Before the first payment, fees are due from the admission date.</p>
+          {!!unavailableDates && <p className="receipt-actions__error" role="alert">{unavailableDates} pending-fee students have unavailable admission/payment dates. Use All Due Dates to find and reconcile them; reminders are disabled for those records.</p>}
           <div className="student-lookup__results-heading"><h2>Available students</h2><span role="status">{matchingStudents.length} matching students</span></div>
+          <div className="announcement-actions">
+            <Button variant="secondary" disabled={disabled || !remindable.length} onClick={() => setReminderIds(allSelected ? new Set() : new Set(remindable.map((student) => student.studentId)))}>{allSelected ? 'Clear Selection' : 'Select All Matching Pending Students'}</Button>
+            <Button disabled={disabled || !reminderIds.size} onClick={() => reminderPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Review Selected Reminders ({reminderIds.size})</Button>
+          </div>
           {!matchingStudents.length && <p>No students match your search or filters.</p>}
-          {matchingStudents.map((student) => <Card className="student-lookup__result" key={student.studentId}><div><strong>{student.fullName}</strong><span>{student.studentId} · <CourseLabel name={student.course} /> · Batch {student.batch}</span><span>{student.mobileNumber}</span></div><div className="student-lookup__result-fees"><span>{student.balance > 0 ? 'Pending Balance' : 'Fully Paid'}</span><strong>{formatCurrency(Math.max(student.balance, 0))}</strong></div><Button disabled={Boolean(selectedId)} onClick={() => void selectStudent(student.studentId)}>{selectedId === student.studentId ? 'Loading Student...' : 'Select Student'}</Button></Card>)}
+          {matchingStudents.map((student) => {
+            const schedule = studentFeeSchedule(student, today)
+            return <Card className="student-lookup__result" key={student.studentId}>
+              <label className="fee-reminder-select"><input type="checkbox" aria-label={`Remind ${student.fullName}`} checked={reminderIds.has(student.studentId)} disabled={disabled || student.balance <= 0 || !schedule.dueDate} onChange={(event) => setReminderIds((current) => {
+                const next = new Set(current)
+                if (event.target.checked) next.add(student.studentId)
+                else next.delete(student.studentId)
+                return next
+              })} />Reminder</label>
+              <div className="student-lookup__result-info"><strong>{student.fullName}</strong><span>{student.studentId} · <CourseLabel name={student.course} /> · Batch {student.batch}</span><span>{student.mobileNumber}</span><span>Paid: {formatCurrency(student.totalPaid)} · Last Payment: {student.latestPaymentDate ? formatReceiptDate(student.latestPaymentDate) : student.totalPaid > 0 || (student.paymentCount ?? 0) > 0 ? 'Date unavailable' : 'Never paid'}</span></div>
+              <div className="student-lookup__result-fees"><span>{student.balance > 0 ? 'Pending Balance' : 'Fully Paid'}</span><strong>{formatCurrency(Math.max(student.balance, 0))}</strong>{schedule.dueDate && <span>{schedule.status === 'overdue' ? 'Overdue' : schedule.status === 'due' ? 'Due Today' : 'Next Due'}: {formatReceiptDate(schedule.dueDate)}</span>}{schedule.error && <span className="receipt-actions__error" role="alert">{schedule.error}</span>}</div>
+              <Button disabled={disabled} onClick={() => void selectStudent(student.studentId)}>{selectedId === student.studentId ? 'Loading Student...' : 'Select Student'}</Button>
+            </Card>
+          })}
         </section>
       )}
+      {!isLoading && !error && <div ref={reminderPanel}><Suspense fallback={<p role="status">Loading fee reminders...</p>}><SharedFeeReminders selectedStudents={students.filter((student) => reminderIds.has(student.studentId))} onSelectionReset={() => setReminderIds(new Set())} onLockedChange={setRemindersLocked} /></Suspense></div>}
     </section>
   )
 }
@@ -352,6 +400,7 @@ function PaymentSuccess({
   const whatsappUrl = createPaymentAcknowledgementUrl(admission, payment)
   const showAdmissionConfirmation = payment.previousPaid === 0
   const admissionWhatsappUrl = showAdmissionConfirmation ? createAdmissionConfirmationUrl(admission, payment) : null
+  const dueDate = payment.balance > 0 ? latestPaymentDueDate(payment.paymentDate, admission.latestPaymentDate) : null
 
   return (
     <Card className="payment-success">
@@ -368,6 +417,7 @@ function PaymentSuccess({
         <div><dt>Current Payment</dt><dd>{formatCurrency(payment.amountPaid)}</dd></div>
         <div><dt>Total Paid</dt><dd>{formatCurrency(payment.totalPaid)}</dd></div>
         <div><dt>Pending Balance</dt><dd>{formatCurrency(payment.balance)}</dd></div>
+        <div><dt>Next Payment Due</dt><dd>{payment.balance <= 0 ? 'No further payment due' : dueDate ? formatReceiptDate(dueDate) : 'Date unavailable'}</dd></div>
       </dl>
       {warning && <p className="receipt-actions__error" role="alert">Payment saved, but {warning} Do not submit it again; contact an administrator.</p>}
       <div className="payment-form__actions">

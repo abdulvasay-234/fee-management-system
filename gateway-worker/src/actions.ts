@@ -7,6 +7,7 @@ export const GET_ACTIONS = new Set([
   'enquiries',
   'walkins',
   'followups',
+  'fee-reminders',
 ])
 
 export const POST_ACTIONS = new Set([
@@ -24,6 +25,8 @@ export const POST_ACTIONS = new Set([
   'add-followup',
   'update-followup',
   'rebuild-indexes',
+  'create-fee-reminder',
+  'update-fee-reminder',
 ])
 
 export function isAllowedAction(method: 'GET' | 'POST', action: string) {

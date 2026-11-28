@@ -11,6 +11,7 @@ export interface AdmissionSnapshot {
   finalFee: number
   mobileNumber: string
   previousPaid: number
+  latestPaymentDate?: string
   startTime: string
   endTime: string
   studentName: string

@@ -1,5 +1,6 @@
 import { getIdToken, notifyAuthFailure } from '../auth/authService'
 import { encodeEnquiryPayload, normalizeEnquiryRecord } from '../features/enquiries/enquiryEducation'
+import { validateFeeReminderQueue, type FeeReminderQueue, type FeeReminderChange } from '../features/payments/feeReminders'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 const REQUEST_TIMEOUT_MS = 15_000
@@ -139,6 +140,8 @@ export interface StudentRecord {
   finalFee: number
   totalPaid?: number
   balance?: number
+  latestPaymentDate?: string
+  paymentCount?: number
   remarks: string
   otherProgramDetails?: string
   createdAt: string
@@ -323,11 +326,11 @@ async function request<T>(
   init: RequestInit = {},
   credential = getIdToken(),
   notifyFailure = true,
-  outcomeMayBeUnknown: 'conversion' | 'payment' | null = null,
+  outcomeMayBeUnknown: 'conversion' | 'payment' | 'reminder' | null = null,
 ): Promise<T> {
   if (!credential) throw new ApiHttpError('Authentication required.', 401)
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), outcomeMayBeUnknown === 'conversion' ? CONVERSION_TIMEOUT_MS : REQUEST_TIMEOUT_MS)
+  const timeoutId = window.setTimeout(() => controller.abort(), outcomeMayBeUnknown === 'conversion' || outcomeMayBeUnknown === 'reminder' ? CONVERSION_TIMEOUT_MS : REQUEST_TIMEOUT_MS)
 
   try {
     const headers = new Headers(init.headers)
@@ -343,7 +346,7 @@ async function request<T>(
     }
     if (!response.ok) {
       if (outcomeMayBeUnknown && response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
-        const message = outcomeMayBeUnknown === 'payment'
+        const message = outcomeMayBeUnknown === 'reminder' ? 'The fee reminder request was rejected. Refresh reminder history before continuing.' : outcomeMayBeUnknown === 'payment'
           ? 'The payment request was rejected. Review the payment details and try again.'
           : 'The conversion request was rejected. Review the admission details and try again.'
         throw new ApiHttpError(message, response.status)
@@ -360,6 +363,9 @@ async function request<T>(
   } catch (error) {
     if (error instanceof ApiHttpError || error instanceof ApiOutcomeUnknownError) throw error
     if (outcomeMayBeUnknown) {
+      if (outcomeMayBeUnknown === 'reminder') {
+        throw new ApiOutcomeUnknownError(`Fee reminder result could not be confirmed: ${toUserMessage(error)} Retry the original request or refresh shared history before continuing.`)
+      }
       if (outcomeMayBeUnknown === 'payment') {
         throw new ApiOutcomeUnknownError(`Payment outcome could not be confirmed${error instanceof Error ? `: ${error.message}` : '.'} Check the payment history before submitting again; contact an administrator if it is unclear.`)
       }
@@ -381,7 +387,7 @@ export function validateCredential(credential: string) {
   return request<{ success: true; data: CourseCode[] }>('?action=course-codes', {}, credential, false)
 }
 
-function post<T>(payload: Record<string, unknown>, outcomeMayBeUnknown: 'conversion' | 'payment' | null = null) {
+function post<T>(payload: Record<string, unknown>, outcomeMayBeUnknown: 'conversion' | 'payment' | 'reminder' | null = null) {
   return request<T>('', {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -471,6 +477,22 @@ export async function fetchPayments(filters: Record<string, string | undefined> 
   const result = await request<{ success: true; data: PaymentRecord[] }>(`?action=payments${query ? `&${query}` : ''}`)
   if (!Array.isArray(result.data)) throw new Error('The LSA API returned invalid payment records.')
   return result.data
+}
+
+export async function fetchFeeReminders() {
+  const result = await request<{ success: true; data: FeeReminderQueue[] }>('?action=fee-reminders')
+  if (!Array.isArray(result.data)) throw new Error('The API returned invalid fee reminder history.')
+  return result.data.map(validateFeeReminderQueue)
+}
+
+export async function createFeeReminder(id: string, studentIds: string[]) {
+  const result = await post<{ success: true; data: FeeReminderQueue }>({ action: 'create-fee-reminder', id, studentIds }, 'reminder')
+  return validateFeeReminderQueue(result.data)
+}
+
+export async function updateFeeReminder(payload: { id: string; revision: number; operationId: string; change: FeeReminderChange; recipientId?: string }) {
+  const result = await post<{ success: true; data: FeeReminderQueue }>({ action: 'update-fee-reminder', ...payload }, 'reminder')
+  return validateFeeReminderQueue(result.data)
 }
 
 export async function fetchDashboard() {
